@@ -78,9 +78,13 @@ jobs:
             python3-setuptools python3-numpy python3-yaml python3-empy \
             python3-opencv python3-lark \
             libtinyxml2-dev libyaml-cpp-dev libspdlog-dev libssl-dev \
-            pkg-config
+            pkg-config ccache
           pip3 install --break-system-packages \
             colcon-common-extensions catkin_pkg lark
+
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: px4-pkgs-${{ hashFiles('src/px4_msgs/**', 'src/px4_single_plan/**') }}
 
       - uses: actions/download-artifact@v8
         with:
@@ -98,12 +102,15 @@ jobs:
           cp -r src/px4_msgs /px4_ws/src/
           cp -r src/px4_single_plan /px4_ws/src/
           cd /px4_ws
+          export PATH="/usr/lib/ccache:$PATH"
           colcon build \
             --merge-install \
             --install-base /opt/ros/jazzy \
             --cmake-args \
               -DCMAKE_BUILD_TYPE=Release \
-              -DBUILD_TESTING=OFF
+              -DBUILD_TESTING=OFF \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Package tarball
         run: tar czf /tmp/ros-jazzy-px4-arm64.tar.gz -C / opt/ros/jazzy
