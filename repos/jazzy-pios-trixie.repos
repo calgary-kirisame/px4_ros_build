@@ -270,3 +270,7 @@ repositories:
     type: git
     url: https://github.com/ros2/test_interface_files.git
     version: jazzy
+  ros-tooling/keyboard_handler:
+    type: git
+    url: https://github.com/ros-tooling/keyboard_handler.git
+    version: jazzy
