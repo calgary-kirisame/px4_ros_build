@@ -17,16 +17,32 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Restore cached tarball
+        id: tarball
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/ros-jazzy-base-pios-arm64.tar.gz
+          key: ros-base-tarball-${{ hashFiles('repos/jazzy-pios-trixie.repos', 'scripts/build-ros.sh', 'scripts/install-build-deps.sh') }}
+
       - name: Install build dependencies
+        if: steps.tarball.outputs.cache-hit != 'true'
         run: scripts/install-build-deps.sh
 
       - uses: hendrikmuhs/ccache-action@v1.2
+        if: steps.tarball.outputs.cache-hit != 'true'
         with:
           key: ros-base-${{ hashFiles('repos/jazzy-pios-trixie.repos') }}
-          save: true
 
       - name: Build ROS 2 Jazzy
+        if: steps.tarball.outputs.cache-hit != 'true'
         run: scripts/build-ros.sh
+
+      - name: Save tarball cache
+        if: steps.tarball.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: /tmp/ros-jazzy-base-pios-arm64.tar.gz
+          key: ros-base-tarball-${{ hashFiles('repos/jazzy-pios-trixie.repos', 'scripts/build-ros.sh', 'scripts/install-build-deps.sh') }}
 
       - uses: actions/upload-artifact@v7
         with:
@@ -141,12 +157,31 @@ jobs:
           name: xrce-dds-agent
           path: /tmp/artifacts
 
-      - name: Download Pi OS image
+      - name: Resolve Pi OS URL
+        id: pios
         run: |
           PIOS_URL=$(wget -qO- "${{ env.PIOS_MANIFEST_URL }}" | jq -r '
             [.. | objects | select(.name? == "Raspberry Pi OS Lite (64-bit)")] | first | .url')
-          echo "Downloading: $PIOS_URL"
-          sudo wget -q -O /tmp/pios.img.xz "$PIOS_URL"
+          echo "url=$PIOS_URL" >> "$GITHUB_OUTPUT"
+          echo "cache_key=pios-$(echo "$PIOS_URL" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Pi OS cache
+        id: pios-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/pios.img.xz
+          key: ${{ steps.pios.outputs.cache_key }}
+
+      - name: Download Pi OS image
+        if: steps.pios-cache.outputs.cache-hit != 'true'
+        run: sudo wget -q -O /tmp/pios.img.xz "${{ steps.pios.outputs.url }}"
+
+      - name: Save Pi OS cache
+        if: steps.pios-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: /tmp/pios.img.xz
+          key: ${{ steps.pios.outputs.cache_key }}
 
       - name: Build image
         run: sudo scripts/configure-image.sh

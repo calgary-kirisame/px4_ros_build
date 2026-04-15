@@ -56,4 +56,4 @@ losetup -d "$LOOP"
 
 DATE=$(date +%Y%m%d)
 mv "$IMG" "/tmp/px4-companion-cm5-${DATE}.img"
-xz -9 -T0 "/tmp/px4-companion-cm5-${DATE}.img"
+xz -9 -T0 --memlimit-compress=0 "/tmp/px4-companion-cm5-${DATE}.img"
