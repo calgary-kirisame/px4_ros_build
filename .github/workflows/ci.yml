@@ -174,7 +174,7 @@ jobs:
 
       - name: Download Pi OS image
         if: steps.pios-cache.outputs.cache-hit != 'true'
-        run: sudo wget -q -O /tmp/pios.img.xz "${{ steps.pios.outputs.url }}"
+        run: wget -q -O /tmp/pios.img.xz "${{ steps.pios.outputs.url }}"
 
       - name: Save Pi OS cache
         if: steps.pios-cache.outputs.cache-hit != 'true'

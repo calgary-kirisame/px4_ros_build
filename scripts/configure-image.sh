@@ -9,6 +9,9 @@ MNT=/tmp/rootfs
 
 xz -d "${IMG}.xz"
 
+id
+ls -la "$IMG"
+stat "$IMG"
 truncate -s +3G "$IMG"
 LOOP=$(losetup -fP --show "$IMG")
 parted -s "$LOOP" resizepart 2 100%
