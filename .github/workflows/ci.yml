@@ -20,25 +20,13 @@ jobs:
       - name: Install build dependencies
         run: scripts/install-build-deps.sh
 
-      - name: Restore ccache
-        id: ccache
-        uses: actions/cache/restore@v5
+      - uses: hendrikmuhs/ccache-action@v1.2
         with:
-          path: /root/.cache/ccache
-          key: ccache-ros-base-${{ hashFiles('repos/jazzy-pios-trixie.repos') }}-${{ github.sha }}
-          restore-keys: |
-            ccache-ros-base-${{ hashFiles('repos/jazzy-pios-trixie.repos') }}-
-            ccache-ros-base-
+          key: ros-base-${{ hashFiles('repos/jazzy-pios-trixie.repos') }}
+          save: true
 
       - name: Build ROS 2 Jazzy
         run: scripts/build-ros.sh
-
-      - name: Save ccache
-        uses: actions/cache/save@v5
-        if: always() && steps.ccache.outputs.cache-hit != 'true'
-        with:
-          path: /root/.cache/ccache
-          key: ccache-ros-base-${{ hashFiles('repos/jazzy-pios-trixie.repos') }}-${{ github.sha }}
 
       - uses: actions/upload-artifact@v7
         with:

@@ -11,7 +11,6 @@ mkdir -p "$WS/src"
 vcs import "$WS/src" < "$REPOS_FILE"
 
 export PATH="/usr/lib/ccache:$PATH"
-ccache -M 2G
 
 cd "$WS"
 colcon build \
@@ -24,5 +23,7 @@ colcon build \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
   --parallel-workers "$(nproc)"
+
+ccache -s
 
 tar czf /tmp/ros-jazzy-base-pios-arm64.tar.gz -C / opt/ros/jazzy
