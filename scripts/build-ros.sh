@@ -17,6 +17,7 @@ cd "$WS"
 colcon build \
   --merge-install \
   --install-base "$INSTALL_BASE" \
+  --packages-skip rosbag2_examples_cpp rosbag2_examples_py rosbag2_performance_benchmarking \
   --cmake-args \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_TESTING=OFF \
