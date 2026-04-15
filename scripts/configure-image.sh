@@ -38,9 +38,8 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
   apt-get install -y --no-install-recommends \
     python3-numpy python3-yaml python3-netifaces python3-empy \
     python3-serial python3-opencv python3-pyaudio \
-    python3-speechrecognition \
     libtinyxml2-dev libyaml-cpp-dev libspdlog-dev \
-    libcyclonedds0 can-utils
+    can-utils
 systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
   apt-get clean
 
