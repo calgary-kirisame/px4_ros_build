@@ -30,32 +30,25 @@ tar xzf "$ARTIFACT_DIR/ros-jazzy-px4-arm64.tar.gz" -C "$MNT"
 tar xzf "$ARTIFACT_DIR/xrce-dds-agent-arm64.tar.gz" -C "$MNT"
 
 cp -r "$REPO_DIR/overlay/etc/"* "$MNT/etc/"
+echo 'export PATH="/opt/xrce-dds/bin:$PATH"' > "$MNT/etc/profile.d/xrce-dds.sh"
 
-systemd-nspawn -D "$MNT" --bind-ro=/etc/resolv.conf \
-  useradd -m -G sudo,dialout,video,audio -s /bin/bash maav
-echo 'maav:impossible' | systemd-nspawn -D "$MNT" --bind-ro=/etc/resolv.conf chpasswd
-
-systemd-nspawn -D "$MNT" --bind-ro=/etc/resolv.conf \
+systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
   apt-get update
-systemd-nspawn -D "$MNT" --bind-ro=/etc/resolv.conf \
+systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
   apt-get install -y --no-install-recommends \
     python3-numpy python3-yaml python3-netifaces python3-empy \
     python3-serial python3-opencv python3-pyaudio \
     python3-speechrecognition \
     libtinyxml2-dev libyaml-cpp-dev libspdlog-dev \
     libcyclonedds0 can-utils
-systemd-nspawn -D "$MNT" --bind-ro=/etc/resolv.conf \
+systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
   apt-get clean
+
+systemd-nspawn --pipe -D "$MNT" systemctl enable xrce-dds-agent.service
 
 sed -i 's/ console=serial0,[0-9]*//' "$MNT/boot/firmware/cmdline.txt"
 echo "enable_uart=1" >> "$MNT/boot/firmware/config.txt"
 echo "dtoverlay=disable-bt" >> "$MNT/boot/firmware/config.txt"
-
-touch "$MNT/boot/firmware/ssh"
-
-systemd-nspawn -D "$MNT" systemctl enable xrce-dds-agent.service
-
-echo 'export PATH="/opt/xrce-dds/bin:$PATH"' > "$MNT/etc/profile.d/xrce-dds.sh"
 
 umount "$MNT/boot/firmware"
 umount "$MNT"

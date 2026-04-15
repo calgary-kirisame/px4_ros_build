@@ -15,13 +15,13 @@ jobs:
     container:
       image: debian:trixie
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install build dependencies
         run: scripts/install-build-deps.sh
 
       - name: Restore ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /root/.cache/ccache
           key: ccache-ros-base-${{ hashFiles('repos/jazzy-pios-trixie.repos') }}-${{ github.sha }}
@@ -31,7 +31,7 @@ jobs:
       - name: Build ROS 2 Jazzy
         run: scripts/build-ros.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ros-jazzy-base
           path: /tmp/ros-jazzy-base-pios-arm64.tar.gz
@@ -59,7 +59,7 @@ jobs:
       - name: Package tarball
         run: tar czf /tmp/xrce-dds-agent-arm64.tar.gz -C / opt/xrce-dds
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: xrce-dds-agent
           path: /tmp/xrce-dds-agent-arm64.tar.gz
@@ -71,7 +71,7 @@ jobs:
     container:
       image: debian:trixie
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install build dependencies
         run: |
@@ -85,7 +85,7 @@ jobs:
           pip3 install --break-system-packages \
             colcon-common-extensions catkin_pkg lark
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: ros-jazzy-base
           path: /tmp
@@ -111,7 +111,7 @@ jobs:
       - name: Package tarball
         run: tar czf /tmp/ros-jazzy-px4-arm64.tar.gz -C / opt/ros/jazzy
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ros-jazzy-px4
           path: /tmp/ros-jazzy-px4-arm64.tar.gz
@@ -121,18 +121,18 @@ jobs:
     needs: [build-ros-base, build-xrce-agent, build-px4-pkgs]
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install image tools
         run: |
           sudo apt-get update
           sudo apt-get install -y kpartx parted e2fsprogs xz-utils systemd-container wget jq
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: ros-jazzy-px4
           path: /tmp/artifacts
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: xrce-dds-agent
           path: /tmp/artifacts
@@ -147,7 +147,7 @@ jobs:
       - name: Build image
         run: sudo scripts/configure-image.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: px4-companion-image
           path: /tmp/px4-companion-cm5-*.img.xz
