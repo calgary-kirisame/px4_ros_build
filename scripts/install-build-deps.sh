@@ -11,6 +11,7 @@ apt-get install -y --no-install-recommends \
   liblog4cxx-dev libconsole-bridge-dev libpython3-dev \
   libeigen3-dev libboost-dev pybind11-dev \
   liblttng-ust-dev lttng-tools \
+  libsqlite3-dev libtinyxml-dev \
   ccache pkg-config
 
 pip3 install --break-system-packages \
