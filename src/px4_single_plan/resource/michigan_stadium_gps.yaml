@@ -1,0 +1,19 @@
+field:
+  name: Michigan Stadium
+  home:
+    lat: 42.2658783
+    lon: -83.7487304
+    alt_m: 0.0
+  # OSM pitch geometry for Michigan Stadium in Ann Arbor.
+  corners_gps:
+    southwest: {lat: 42.2653871, lon: -83.7490135}
+    southeast: {lat: 42.2653932, lon: -83.7484288}
+    northwest: {lat: 42.2663644, lon: -83.7490320}
+    northeast: {lat: 42.2663705, lon: -83.7484473}
+
+launch_points:
+  # Updated lineup anchored from user-provided drone 0 and drone 2 positions.
+  px4_0: {lat: 42.265461828948254, lon: -83.74902169648834, yaw_deg: 359.197426}
+  px4_1: {lat: 42.265464113618910, lon: -83.74887275883364, yaw_deg: 359.197426}
+  px4_2: {lat: 42.265466398289570, lon: -83.74872382117893, yaw_deg: 359.197426}
+  px4_3: {lat: 42.265468682960226, lon: -83.74857488352421, yaw_deg: 359.197426}
