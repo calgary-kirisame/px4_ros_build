@@ -4,11 +4,7 @@
 # Usage:
 #   cd provision
 #   ansible-playbook playbooks/flash.yml \
-#     -e 'drone_id=3 device=/dev/disk4 image=px4-companion-cm5-20260415.img.xz'
-#
-# Before first use:
-#   1. Edit inventory.yml with your WiFi credentials and SSH keys
-#   2. Expose the CM5 eMMC: sudo rpiboot -d mass-storage-gadget64
+#     -e 'hostname=bigpi5 device=/dev/disk4 image=px4-companion-cm5-20260415.img.xz'
 
 - name: Flash drone image
   hosts: localhost
@@ -16,17 +12,17 @@
   gather_facts: false
 
   vars:
-    drone_hostname: "drone{{ drone_id }}"
+    drone_hostname: "{{ hostname }}"
 
   pre_tasks:
     - name: Validate inputs
       ansible.builtin.assert:
         that:
-          - drone_id is defined
+          - hostname is defined
           - device is defined
           - image is defined
         fail_msg: >
-          Required: -e 'drone_id=N device=/dev/diskX image=path/to/image.img.xz'
+          Required: -e 'hostname=N device=/dev/diskX image=path/to/image.img.xz'
 
   tasks:
     - name: Generate cloud-init user-data

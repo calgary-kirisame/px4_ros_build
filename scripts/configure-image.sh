@@ -44,6 +44,8 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
 systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
   apt-get clean
 
+systemd-nspawn --pipe -D "$MNT" userdel -r pi
+
 systemd-nspawn --pipe -D "$MNT" systemctl enable xrce-dds-agent.service
 
 echo "dtparam=uart0=on" >> "$MNT/boot/firmware/config.txt"

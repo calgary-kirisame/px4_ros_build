@@ -2,18 +2,19 @@ all:
   children:
     drones:
       hosts:
+        bigpi5:
+        drone0:
         drone1:
         drone2:
         drone3:
         drone4:
-        drone5:
       vars:
         ansible_user: maav
         # Tailscale MagicDNS resolves hostnames automatically.
         # If not enabled, add per-host ansible_host overrides.
 
         # Cloud-init provisioning vars (used by flash.yml)
-        wifi_ssid: YOUR_SSID
-        wifi_password: YOUR_PASSWORD
+        wifi_ssid: Recover.Me-65F3
+        wifi_password: n2mtaw7sn2
         maav_password_hash: "$6$rounds=656000$kMGhSFDMgXCMfnFn$R.q5V7gU7dB4p2yMFoSoNqhdOEjPKFxBR6gRjVrMB3PXJjMa7SLVhRMXrCPNqiLvH2FD74o4MCPK7tBsNbGm61"
-        ssh_authorized_keys: []
+        ssh_authorized_keys: ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBngpxnPioh58n6ZrB7+eJ+ShBPTOpUP62pCkU+aJ8l/ calgary@pi.local"]
