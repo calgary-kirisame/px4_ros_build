@@ -2,7 +2,7 @@
 
 Pipeline producing Pi OS image for the CM5 with ROS 2 Jazzy and PX4 companion software. Note we target the CM5 with only 16GB eMMC.
 
-- Pi OS Trixie Lite (Debian 13, arm64)
+- Pi OS Trixie Lite
 - ROS 2 Jazzy at `/opt/ros/jazzy/`, auto-sourced on login
 - CycloneDDS as the default RMW
 - Micro XRCE-DDS Agent v2.4.x running as a systemd service
@@ -11,13 +11,6 @@ Pipeline producing Pi OS image for the CM5 with ROS 2 Jazzy and PX4 companion so
 - rosbag2 for flight data recording
 - SSH and WiFi enabled
 - User: `maav`
-
-## Pipeline
-
-1. `build-ros-base` Builds ROS 2 Jazzy from source in a `debian:trixie` container with ccache
-2. `build-xrce-agent` Builds XRCE-DDS Agent
-3. `build-px4-pkgs` Builds px4_msgs + px4_single_plan against the ROS base
-4. `build-image` Produces the final image
 
 ## Provisioning
 
@@ -28,7 +21,7 @@ Ansible workflow for flashing and maintaining a drone fleet. See [usbboot](https
 - `provision/playbooks/deploy.yml` installs the `px4-single-plan` .deb across the fleet over SSH
 - `provision/templates/` Jinja2 templates rendered per drone at flash time (cloud-init user-data + network-config)
 
-### First-time setup
+### How 2 flash
 
 Requires `rpi-imager` >2.0!!
 

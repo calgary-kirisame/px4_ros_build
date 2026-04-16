@@ -60,14 +60,16 @@ BLOCK_SIZE=$(tune2fs -l "$ROOT_DEV" | awk '/^Block size:/ {print $3}')
 BLOCK_COUNT=$(tune2fs -l "$ROOT_DEV" | awk '/^Block count:/ {print $3}')
 FS_BYTES=$((BLOCK_SIZE * BLOCK_COUNT))
 
-P2_START=$(parted -sm "$LOOP" unit B print | awk -F: '$1=="2"{gsub("B","",$2); print $2}')
-P2_END=$((P2_START + FS_BYTES - 1))
-parted -s "$LOOP" unit B resizepart 2 "$P2_END"
+SECTOR_SIZE=$(blockdev --getss "$LOOP")
+P2_START_SECTORS=$(sfdisk --json "$LOOP" | jq '.partitiontable.partitions | map(select(.node | endswith("p2"))) | .[0].start')
 
 kpartx -dv "$LOOP"
+
+echo ",$((FS_BYTES / SECTOR_SIZE))" | sfdisk --no-reread -N 2 "$LOOP"
+
 losetup -d "$LOOP"
 
-truncate -s $((P2_END + 1)) "$IMG"
+truncate -s $((P2_START_SECTORS * SECTOR_SIZE + FS_BYTES)) "$IMG"
 
 DATE=$(date +%Y%m%d)
 mv "$IMG" "/tmp/px4-companion-cm5-${DATE}.img"

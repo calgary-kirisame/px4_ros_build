@@ -53,10 +53,19 @@ jobs:
   build-xrce-agent:
     runs-on: ubuntu-24.04-arm
     steps:
+      - name: Restore cached tarball
+        id: tarball
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/xrce-dds-agent-arm64.tar.gz
+          key: xrce-dds-agent-tarball-${{ env.XRCE_DDS_VERSION }}
+
       - name: Install build deps
+        if: steps.tarball.outputs.cache-hit != 'true'
         run: sudo apt-get update && sudo apt-get install -y build-essential cmake git
 
       - name: Build Micro XRCE-DDS Agent
+        if: steps.tarball.outputs.cache-hit != 'true'
         run: |
           git clone -b ${{ env.XRCE_DDS_VERSION }} --depth 1 \
             https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
@@ -70,7 +79,15 @@ jobs:
           sudo make install
 
       - name: Package tarball
+        if: steps.tarball.outputs.cache-hit != 'true'
         run: tar czf /tmp/xrce-dds-agent-arm64.tar.gz -C / opt/xrce-dds
+
+      - name: Save tarball cache
+        if: steps.tarball.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: /tmp/xrce-dds-agent-arm64.tar.gz
+          key: xrce-dds-agent-tarball-${{ env.XRCE_DDS_VERSION }}
 
       - uses: actions/upload-artifact@v7
         with:
@@ -86,7 +103,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Restore cached outputs
+        id: pkgs-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            /tmp/ros-jazzy-px4-arm64.tar.gz
+            /tmp/px4-single-plan_*.deb
+          key: px4-pkgs-outputs-${{ hashFiles('repos/jazzy-pios-trixie.repos', 'scripts/build-ros.sh', 'scripts/install-build-deps.sh', 'src/px4_msgs/**', 'src/px4_single_plan/**', 'scripts/package-deb.sh') }}
+
       - name: Install build dependencies
+        if: steps.pkgs-cache.outputs.cache-hit != 'true'
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
@@ -94,23 +121,27 @@ jobs:
             python3-setuptools python3-numpy python3-yaml python3-empy \
             python3-opencv python3-lark \
             libtinyxml2-dev libyaml-cpp-dev libspdlog-dev libssl-dev \
-            pkg-config ccache
+            pkg-config ccache dpkg-dev
           pip3 install --break-system-packages \
             colcon-common-extensions catkin_pkg lark
 
       - uses: hendrikmuhs/ccache-action@v1.2
+        if: steps.pkgs-cache.outputs.cache-hit != 'true'
         with:
           key: px4-pkgs-${{ hashFiles('src/px4_msgs/**', 'src/px4_single_plan/**') }}
 
       - uses: actions/download-artifact@v8
+        if: steps.pkgs-cache.outputs.cache-hit != 'true'
         with:
           name: ros-jazzy-base
           path: /tmp
 
       - name: Extract ROS 2 base
+        if: steps.pkgs-cache.outputs.cache-hit != 'true'
         run: tar xzf /tmp/ros-jazzy-base-pios-arm64.tar.gz -C /
 
       - name: Build PX4 packages
+        if: steps.pkgs-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           source /opt/ros/jazzy/setup.bash
@@ -129,12 +160,21 @@ jobs:
               -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Package tarball
+        if: steps.pkgs-cache.outputs.cache-hit != 'true'
         run: tar czf /tmp/ros-jazzy-px4-arm64.tar.gz -C / opt/ros/jazzy
 
       - name: Package .deb
-        run: |
-          apt-get install -y --no-install-recommends dpkg-dev
-          scripts/package-deb.sh /opt/ros/jazzy
+        if: steps.pkgs-cache.outputs.cache-hit != 'true'
+        run: scripts/package-deb.sh /opt/ros/jazzy
+
+      - name: Save outputs cache
+        if: steps.pkgs-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            /tmp/ros-jazzy-px4-arm64.tar.gz
+            /tmp/px4-single-plan_*.deb
+          key: px4-pkgs-outputs-${{ hashFiles('repos/jazzy-pios-trixie.repos', 'scripts/build-ros.sh', 'scripts/install-build-deps.sh', 'src/px4_msgs/**', 'src/px4_single_plan/**', 'scripts/package-deb.sh') }}
 
       - uses: actions/upload-artifact@v7
         with:
