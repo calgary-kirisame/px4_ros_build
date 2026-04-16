@@ -46,14 +46,26 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
 
 systemd-nspawn --pipe -D "$MNT" systemctl enable xrce-dds-agent.service
 
-sed -i 's/ console=serial0,[0-9]*//' "$MNT/boot/firmware/cmdline.txt"
-echo "enable_uart=1" >> "$MNT/boot/firmware/config.txt"
-echo "dtoverlay=disable-bt" >> "$MNT/boot/firmware/config.txt"
+echo "dtparam=uart0=on" >> "$MNT/boot/firmware/config.txt"
 
 umount "$MNT/boot/firmware"
 umount "$MNT"
+
+e2fsck -f -y "$ROOT_DEV"
+resize2fs -M "$ROOT_DEV"
+
+BLOCK_SIZE=$(tune2fs -l "$ROOT_DEV" | awk '/^Block size:/ {print $3}')
+BLOCK_COUNT=$(tune2fs -l "$ROOT_DEV" | awk '/^Block count:/ {print $3}')
+FS_BYTES=$((BLOCK_SIZE * BLOCK_COUNT))
+
+P2_START=$(parted -sm "$LOOP" unit B print | awk -F: '$1=="2"{gsub("B","",$2); print $2}')
+P2_END=$((P2_START + FS_BYTES - 1))
+parted -s "$LOOP" unit B resizepart 2 "$P2_END"
+
 kpartx -dv "$LOOP"
 losetup -d "$LOOP"
+
+truncate -s $((P2_END + 1)) "$IMG"
 
 DATE=$(date +%Y%m%d)
 mv "$IMG" "/tmp/px4-companion-cm5-${DATE}.img"

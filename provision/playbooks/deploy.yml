@@ -1,0 +1,19 @@
+---
+- name: Deploy flight code
+  hosts: drones
+  become: true
+
+  tasks:
+    - name: Copy .deb package
+      ansible.builtin.copy:
+        src: "{{ deb_file }}"
+        dest: /tmp/px4-single-plan.deb
+
+    - name: Install package
+      ansible.builtin.apt:
+        deb: /tmp/px4-single-plan.deb
+
+    - name: Clean up
+      ansible.builtin.file:
+        path: /tmp/px4-single-plan.deb
+        state: absent

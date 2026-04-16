@@ -131,11 +131,22 @@ jobs:
       - name: Package tarball
         run: tar czf /tmp/ros-jazzy-px4-arm64.tar.gz -C / opt/ros/jazzy
 
+      - name: Package .deb
+        run: |
+          apt-get install -y --no-install-recommends dpkg-dev
+          scripts/package-deb.sh /opt/ros/jazzy
+
       - uses: actions/upload-artifact@v7
         with:
           name: ros-jazzy-px4
           path: /tmp/ros-jazzy-px4-arm64.tar.gz
           retention-days: 7
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: px4-single-plan-deb
+          path: /tmp/px4-single-plan_*.deb
+          retention-days: 30
 
   build-image:
     needs: [build-ros-base, build-xrce-agent, build-px4-pkgs]

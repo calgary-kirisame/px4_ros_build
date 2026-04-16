@@ -1,0 +1,15 @@
+#cloud-config
+hostname: {{ drone_hostname }}
+manage_etc_hosts: true
+
+users:
+  - name: maav
+    groups: sudo,dialout,video,audio
+    shell: /bin/bash
+    lock_passwd: false
+    # password: impossible
+    # generated with: openssl passwd -6 'impossible'
+    passwd: {{ maav_password_hash }}
+    ssh_authorized_keys: {{ ssh_authorized_keys | default([]) | to_json }}
+
+ssh_pwauth: true
