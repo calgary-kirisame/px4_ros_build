@@ -49,11 +49,15 @@
 
     - name: Flash image
       ansible.builtin.command:
-        cmd: >
-          rpi-imager --cli
-          --cloudinit-userdata /tmp/cloud-init-{{ drone_hostname }}-user-data
-          --cloudinit-networkconfig /tmp/cloud-init-{{ drone_hostname }}-network-config
-          {{ image }} {{ device }}
+        argv:
+          - /Applications/Raspberry Pi Imager.app/Contents/MacOS/rpi-imager
+          - --cli
+          - --cloudinit-userdata
+          - "/tmp/cloud-init-{{ drone_hostname }}-user-data"
+          - --cloudinit-networkconfig
+          - "/tmp/cloud-init-{{ drone_hostname }}-network-config"
+          - "{{ image }}"
+          - "{{ device }}"
 
     - name: Clean up temp files
       ansible.builtin.file:

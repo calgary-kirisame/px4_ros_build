@@ -8,8 +8,13 @@ users:
     shell: /bin/bash
     lock_passwd: false
     # password: impossible
-    # generated with: openssl passwd -6 'impossible'
-    passwd: {{ maav_password_hash }}
+    # generated with: nix shell nixpkgs#python3Packages.passlib --command python3 -c 'from passlib.hash import sha512_crypt; print(sha512_crypt.using(rounds=5000).hash("impossible"))'
+    passwd: "{{ maav_password_hash }}"
     ssh_authorized_keys: {{ ssh_authorized_keys | default([]) | to_json }}
 
 ssh_pwauth: true
+
+runcmd:
+  # Pi OS cloud-init is missing the cc_netplan_nm_patch module which normally
+  # applies the netplan config after generate. Do it ourselves.
+  - [netplan, apply]
