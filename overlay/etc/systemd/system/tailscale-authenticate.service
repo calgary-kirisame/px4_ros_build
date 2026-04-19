@@ -1,0 +1,17 @@
+[Unit]
+Description=Authenticate Tailscale using pre-shared auth key
+Documentation=https://tailscale.com/kb/1085/auth-keys
+After=network-online.target tailscaled.service cloud-final.service
+Wants=network-online.target
+Requires=tailscaled.service
+ConditionPathExists=/etc/tailscale/authkey
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'exec /usr/bin/tailscale up --operator=maav --auth-key="$(cat /etc/tailscale/authkey)"'
+Restart=on-failure
+RestartSec=30s
+
+[Install]
+WantedBy=multi-user.target

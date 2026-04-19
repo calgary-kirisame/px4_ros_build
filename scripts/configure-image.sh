@@ -38,15 +38,31 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
 systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
   apt-get install -y --no-install-recommends \
     python3-numpy python3-yaml python3-netifaces python3-empy \
-    python3-serial python3-opencv python3-pyaudio \
+    python3-serial python3-opencv python3-pyaudio python3-dbus \
+    python3-packaging python3-lark python3-catkin-pkg python3-psutil \
+    python3-osrf-pycommon \
     libtinyxml2-dev libyaml-cpp-dev libspdlog-dev \
     can-utils
 systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
   apt-get clean
 
+systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
+  set -euo pipefail
+  curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg \
+    -o /usr/share/keyrings/tailscale-archive-keyring.gpg
+  curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.tailscale-keyring.list \
+    -o /etc/apt/sources.list.d/tailscale.list
+  apt-get update
+  apt-get install -y --no-install-recommends tailscale
+  apt-get clean
+'
+
 systemd-nspawn --pipe -D "$MNT" passwd -l pi
 
-systemd-nspawn --pipe -D "$MNT" systemctl enable xrce-dds-agent.service
+systemd-nspawn --pipe -D "$MNT" raspi-config nonint do_wifi_country US
+systemd-nspawn --pipe -D "$MNT" raspi-config nonint do_change_locale en_US.UTF-8
+
+systemd-nspawn --pipe -D "$MNT" systemctl enable ssh xrce-dds-agent.service tailscale-authenticate.service
 
 echo "dtparam=uart0=on" >> "$MNT/boot/firmware/config.txt"
 

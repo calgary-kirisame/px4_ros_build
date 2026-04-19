@@ -1,0 +1,9 @@
+// Allow sudo-group users to control NetworkManager over D-Bus without
+// needing an "active" graphical session. Required for headless SSH usage
+// (e.g., running SecureW2 JoinNow over SSH).
+polkit.addRule(function(action, subject) {
+    if (action.id.indexOf("org.freedesktop.NetworkManager.") === 0 &&
+        subject.isInGroup("sudo")) {
+        return polkit.Result.YES;
+    }
+});

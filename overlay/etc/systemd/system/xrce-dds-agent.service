@@ -1,5 +1,5 @@
 [Unit]
-Description=Micro XRCE-DDS Agent for PX4
+Description=Micro XRCE-DDS Agent
 After=network.target
 
 [Service]
