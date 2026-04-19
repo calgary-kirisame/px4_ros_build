@@ -56,7 +56,7 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
 
 systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
   set -euo pipefail
-  PI_KERNEL=$(ls /lib/modules/ | head -1)
+  PI_KERNEL=$(dpkg -L linux-headers-rpi-2712 | awk -F/ "/^\/lib\/modules\// {print \$4; exit}")
   mkdir -p /tmp/shim
   cat > /tmp/shim/uname <<EOF
 #!/bin/sh
