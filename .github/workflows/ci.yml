@@ -96,7 +96,7 @@ jobs:
           retention-days: 7
 
   px4-pkgs:
-    needs: build-ros-base
+    needs: ros-base
     runs-on: ubuntu-24.04-arm
     container:
       image: debian:trixie
@@ -189,7 +189,7 @@ jobs:
           retention-days: 30
 
   assemble-image:
-    needs: [build-ros-base, build-xrce-agent, build-px4-pkgs]
+    needs: [ros-base, xrce-agent, px4-pkgs]
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v6
