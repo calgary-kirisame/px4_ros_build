@@ -59,7 +59,7 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
 
 systemd-nspawn --pipe -D "$MNT" passwd -l pi
 
-systemd-nspawn --pipe -D "$MNT" raspi-config nonint do_wifi_country US
+echo "options cfg80211 ieee80211_regdom=US" > "$MNT/etc/modprobe.d/cfg80211.conf"
 systemd-nspawn --pipe -D "$MNT" raspi-config nonint do_change_locale en_US.UTF-8
 
 systemd-nspawn --pipe -D "$MNT" systemctl enable ssh xrce-dds-agent.service tailscale-authenticate.service

@@ -9,7 +9,7 @@ ConditionPathExists=/etc/tailscale/authkey
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/sh -c 'exec /usr/bin/tailscale up --operator=maav --auth-key="$(cat /etc/tailscale/authkey)"'
+ExecStart=/bin/sh -c 'exec /usr/bin/tailscale up --ssh --operator=maav --auth-key="$(cat /etc/tailscale/authkey)"'
 Restart=on-failure
 RestartSec=30s
 
