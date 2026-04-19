@@ -78,7 +78,10 @@ exit 0
 EOF
   chmod +x /tmp/shim/uname /tmp/shim/modprobe
 
-  apt-get -o DPkg::Path="/tmp/shim:/usr/sbin:/usr/bin:/sbin:/bin" install -y hailo-all
+  # Skip hailo-all meta: it drags in hailo-tappas-core (GStreamer SDK) and
+  # rpicam-apps-hailo-postprocess (camera GUI stack) which we do not use.
+  apt-get -o DPkg::Path="/tmp/shim:/usr/sbin:/usr/bin:/sbin:/bin" install -y \
+      hailort hailort-pcie-driver python3-hailort
   test -f /lib/modules/$PI_KERNEL/updates/dkms/hailo_pci.ko
 
   rm -rf /tmp/shim
