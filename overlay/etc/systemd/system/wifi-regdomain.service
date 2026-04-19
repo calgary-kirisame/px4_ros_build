@@ -1,19 +1,15 @@
 [Unit]
-Description=Set WiFi regdomain and unblock rfkill
-# brcmfmac uses a self-managed regdomain that the cfg80211 module option
-# can't reach, so force it via iw after the interface appears.
-Wants=sys-subsystem-net-devices-wlan0.device
-After=sys-subsystem-net-devices-wlan0.device systemd-rfkill.service
+Description=Unblock wifi rfkill
+# cfg80211.ieee80211_regdom=US is already on the kernel cmdline. brcmfmac is
+# self-managed and ignores cfg80211 anyway, so all we need here is to clear
+# the soft-block that persists from the pristine image state.
+After=systemd-rfkill.service
 Before=NetworkManager.service
-ConditionPathExists=/sys/class/net/wlan0
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/sbin/iw reg set US
 ExecStart=/usr/sbin/rfkill unblock wifi
-Restart=on-failure
-RestartSec=3s
 
 [Install]
 WantedBy=multi-user.target

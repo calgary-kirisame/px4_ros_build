@@ -7,7 +7,10 @@ def detect-rpi-disk [] {
         | where { |l| $l | str starts-with "/dev/disk" }
         | parse --regex '^(?P<dev>/dev/disk\d+)'
         | get dev)
-    let rpi = ($candidates | where { |d| (^diskutil info $d) | str contains "RPi-MSD" })
+    let rpi = ($candidates | where { |d|
+        let info = (^diskutil info $d)
+        ($info | str contains "mmcblk0 Media")
+    })
 
     match ($rpi | length) {
         0 => { error make --unspanned {msg: "No RPi mass storage device found. Did you run `sudo rpiboot`?"} }
@@ -16,7 +19,7 @@ def detect-rpi-disk [] {
     }
 }
 
-def main [hostname: string, image: path] {
+def main [hostname: string, image: path, --disable-verify] {
     let inv = (open ($env.FILE_PWD | path join "inventory.yml")).all.vars
     let device = (detect-rpi-disk)
 
@@ -73,7 +76,8 @@ wifis:
 
     ^diskutil unmountDisk $device
 
-    ^$RPI_IMAGER --cli --cloudinit-userdata $user_data_file --cloudinit-networkconfig $network_config_file $image $device
+    let verify_flag = if $disable_verify { ["--disable-verify"] } else { [] }
+    ^$RPI_IMAGER --cli ...$verify_flag --cloudinit-userdata $user_data_file --cloudinit-networkconfig $network_config_file $image $device
 
     rm $user_data_file $network_config_file
 

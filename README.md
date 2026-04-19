@@ -17,6 +17,7 @@ Follow `How 2 flash` if you haven't flashed yet. Otherwise if the drone is acces
 - `provision/inventory.yml` fleet hosts and per-deployment vars (WiFi etc.)
 - `provision/flash.nu` flashes one CM5 via rpiboot + rpi-imager, generating cloud-init user-data/network-config from inventory
 - `provision/playbooks/deploy.yml` installs the `px4-single-plan` .deb across the fleet over SSH
+- `provision/playbooks/hailo.yml` installs runtime and driver
 
 ### How 2 flash
 

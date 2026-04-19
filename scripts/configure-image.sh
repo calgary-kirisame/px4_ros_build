@@ -59,10 +59,15 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
 
 systemd-nspawn --pipe -D "$MNT" passwd -l pi
 
-echo "options cfg80211 ieee80211_regdom=US" > "$MNT/etc/modprobe.d/cfg80211.conf"
 systemd-nspawn --pipe -D "$MNT" raspi-config nonint do_change_locale en_US.UTF-8
 
 systemd-nspawn --pipe -D "$MNT" systemctl enable ssh xrce-dds-agent.service tailscale-authenticate.service wifi-regdomain.service
+
+# Pre-populate rfkill state so systemd-rfkill restores wifi unblocked on first
+# boot, not just after wifi-regdomain.service runs. Path/name matches the CM5
+# brcmfmac wifi killswitch (platform-1001100000.mmc:wlan).
+mkdir -p "$MNT/var/lib/systemd/rfkill"
+printf '0' > "$MNT/var/lib/systemd/rfkill/platform-1001100000.mmc:wlan"
 
 echo "dtparam=uart0=on" >> "$MNT/boot/firmware/config.txt"
 
