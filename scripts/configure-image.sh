@@ -46,48 +46,6 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
 systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
   apt-get clean
 
-# Hailo-8 runtime + PCIe DKMS driver. The hailort-pcie-driver postinst calls
-# `dkms build` (defaults to uname -r, which returns the runner's kernel inside
-# nspawn, not the Pi's) and `modprobe` (can't load into a chroot). apt
-# overrides PATH to DPkg::Path before forking dpkg, so we prepend a shim dir
-# and point to it via -o DPkg::Path: uname returns the Pi kernel so DKMS
-# builds against linux-headers-rpi-2712, modprobe no-ops so the postinst exits
-# clean. Shim is cleaned up after; no host binaries are touched.
-systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
-  apt-get install -y dkms build-essential linux-headers-rpi-2712
-
-systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
-  set -euo pipefail
-  # linux-headers-rpi-2712 is a meta-package; the versioned sibling has the
-  # actual headers and its name encodes the Pi kernel uname -r.
-  PI_KERNEL=$(dpkg-query -W -f="\${Package}\n" "linux-headers-*-rpi-2712" \
-      | grep -vxF linux-headers-rpi-2712 \
-      | sed "s/^linux-headers-//" \
-      | head -1)
-  test -n "$PI_KERNEL"
-
-  mkdir -p /tmp/shim
-  cat > /tmp/shim/uname <<EOF
-#!/bin/sh
-[ "\$1" = "-r" ] && echo "$PI_KERNEL" && exit 0
-exec /usr/bin/uname "\$@"
-EOF
-  cat > /tmp/shim/modprobe <<EOF
-#!/bin/sh
-exit 0
-EOF
-  chmod +x /tmp/shim/uname /tmp/shim/modprobe
-
-  # Skip hailo-all meta: it drags in hailo-tappas-core (GStreamer SDK) and
-  # rpicam-apps-hailo-postprocess (camera GUI stack) which we do not use.
-  apt-get -o DPkg::Path="/tmp/shim:/usr/sbin:/usr/bin:/sbin:/bin" install -y \
-      hailort hailort-pcie-driver python3-hailort
-  test -f /lib/modules/$PI_KERNEL/updates/dkms/hailo_pci.ko
-
-  rm -rf /tmp/shim
-  apt-get clean
-'
-
 systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
   set -euo pipefail
   curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg \

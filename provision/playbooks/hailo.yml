@@ -1,0 +1,20 @@
+---
+- name: Install Hailo-8 runtime and PCIe DKMS driver
+  hosts: drones
+  become: true
+
+  tasks:
+    - name: Install hailort packages
+      ansible.builtin.apt:
+        name:
+          - hailort
+          - hailort-pcie-driver
+          - python3-hailort
+        update_cache: true
+
+    - name: Verify hailo_pci module is built
+      ansible.builtin.command: modinfo hailo_pci
+      changed_when: false
+
+    - name: Reboot to load hailo_pci
+      ansible.builtin.reboot:
