@@ -14,7 +14,7 @@ Follow `How 2 flash` if you haven't flashed yet. Otherwise if the drone is acces
 
 ## Provisioning
 
-- `provision/inventory.yml` fleet hosts and per-deployment vars (WiFi, SSH keys, password hash, Tailscale auth key)
+- `provision/inventory.yml` fleet hosts and per-deployment vars (WiFi etc.)
 - `provision/flash.nu` flashes one CM5 via rpiboot + rpi-imager, generating cloud-init user-data/network-config from inventory
 - `provision/playbooks/deploy.yml` installs the `px4-single-plan` .deb across the fleet over SSH
 
@@ -24,9 +24,9 @@ See [usbboot](https://github.com/raspberrypi/usbboot) for rpiboot setup
 
 Requires `rpi-imager` >2.0 and `nu`!!
 
-1. Edit `provision/inventory.yml` with WiFi, SSH keys, and a reusable tagged pre-auth key from <https://login.tailscale.com/admin/settings/keys>
+1. Edit `provision/inventory.yml` with WiFi credentials and a reusable tagged pre-auth key from <https://login.tailscale.com/admin/settings/keys>
 2. Expose the CM5 eMMC: `sudo rpiboot -d mass-storage-gadget64`
-3. Flash: `cd provision && nu flash.nu <hostname> /dev/diskX path/to/px4-companion-cm5-YYYYMMDD.img.xz`
+3. Flash: `cd provision && nu flash.nu <hostname> path/to/px4-companion-cm5-YYYYMMDD.img.xz`
 4. `ssh maav@<hostname>`
 
 ### Updating flight code

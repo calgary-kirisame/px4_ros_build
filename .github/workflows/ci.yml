@@ -10,7 +10,7 @@ env:
   XRCE_DDS_VERSION: v2.4.3
 
 jobs:
-  build-ros-base:
+  ros-base:
     runs-on: ubuntu-24.04-arm
     container:
       image: debian:trixie
@@ -50,7 +50,7 @@ jobs:
           path: /tmp/ros-jazzy-base-pios-arm64.tar.gz
           retention-days: 7
 
-  build-xrce-agent:
+  xrce-agent:
     runs-on: ubuntu-24.04-arm
     steps:
       - name: Restore cached tarball
@@ -95,7 +95,7 @@ jobs:
           path: /tmp/xrce-dds-agent-arm64.tar.gz
           retention-days: 7
 
-  build-px4-pkgs:
+  px4-pkgs:
     needs: build-ros-base
     runs-on: ubuntu-24.04-arm
     container:
@@ -188,7 +188,7 @@ jobs:
           path: /tmp/px4-single-plan_*.deb
           retention-days: 30
 
-  build-image:
+  assemble-image:
     needs: [build-ros-base, build-xrce-agent, build-px4-pkgs]
     runs-on: ubuntu-24.04-arm
     steps:

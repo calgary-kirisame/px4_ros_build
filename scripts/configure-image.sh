@@ -46,6 +46,14 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
 systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
   apt-get clean
 
+# Hailo-8 runtime + PCIe DKMS driver. Needs kernel headers matching the shipped
+# kernel so the module compiles at install time; without them the build is
+# deferred to first boot.
+systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
+  apt-get install -y dkms linux-headers-rpi-2712 hailo-all
+systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
+  apt-get clean
+
 systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
   set -euo pipefail
   curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg \
@@ -62,7 +70,7 @@ systemd-nspawn --pipe -D "$MNT" passwd -l pi
 echo "options cfg80211 ieee80211_regdom=US" > "$MNT/etc/modprobe.d/cfg80211.conf"
 systemd-nspawn --pipe -D "$MNT" raspi-config nonint do_change_locale en_US.UTF-8
 
-systemd-nspawn --pipe -D "$MNT" systemctl enable ssh xrce-dds-agent.service tailscale-authenticate.service
+systemd-nspawn --pipe -D "$MNT" systemctl enable ssh xrce-dds-agent.service tailscale-authenticate.service wifi-regdomain.service
 
 echo "dtparam=uart0=on" >> "$MNT/boot/firmware/config.txt"
 

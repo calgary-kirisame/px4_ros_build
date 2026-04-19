@@ -1,8 +1,24 @@
 #!/usr/bin/env nu
 const RPI_IMAGER = "/Applications/Raspberry Pi Imager.app/Contents/MacOS/rpi-imager"
 
-def main [hostname: string, device: string, image: path] {
+def detect-rpi-disk [] {
+    let candidates = (^diskutil list external physical
+        | lines
+        | where { |l| $l | str starts-with "/dev/disk" }
+        | parse --regex '^(?P<dev>/dev/disk\d+)'
+        | get dev)
+    let rpi = ($candidates | where { |d| (^diskutil info $d) | str contains "RPi-MSD" })
+
+    match ($rpi | length) {
+        0 => { error make --unspanned {msg: "No RPi mass storage device found. Did you run `sudo rpiboot`?"} }
+        1 => { $rpi | first }
+        _ => { error make --unspanned {msg: $"Multiple RPi-MSDs: ($rpi | str join ', ')"} }
+    }
+}
+
+def main [hostname: string, image: path] {
     let inv = (open ($env.FILE_PWD | path join "inventory.yml")).all.vars
+    let device = (detect-rpi-disk)
 
     let authkey = ($inv.tailscale_authkey? | default "")
     let tailscale_block = if $authkey == "" { "" } else { $"
@@ -54,6 +70,8 @@ wifis:
         rm $user_data_file $network_config_file
         error make --unspanned {msg: "Aborted"}
     }
+
+    ^diskutil unmountDisk $device
 
     ^$RPI_IMAGER --cli --cloudinit-userdata $user_data_file --cloudinit-networkconfig $network_config_file $image $device
 
