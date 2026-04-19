@@ -46,13 +46,33 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
 systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
   apt-get clean
 
-# Hailo-8 runtime + PCIe DKMS driver. Needs kernel headers matching the shipped
-# kernel so the module compiles at install time; without them the build is
-# deferred to first boot.
+# Hailo-8 runtime + PCIe DKMS driver. The hailort-pcie-driver postinst calls
+# `dkms build` (which defaults to `uname -r` — the runner's kernel inside
+# nspawn, not the Pi's) and then `modprobe` (can't load into a chroot). Shim
+# both: uname returns the Pi kernel so DKMS builds the .ko against
+# linux-headers-rpi-2712, modprobe no-ops so the postinst exits clean.
 systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
-  apt-get install -y dkms linux-headers-rpi-2712 hailo-all
-systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
+  apt-get install -y dkms build-essential linux-headers-rpi-2712
+
+systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
+  set -euo pipefail
+  PI_KERNEL=$(ls /lib/modules/ | head -1)
+  mkdir -p /tmp/shim
+  cat > /tmp/shim/uname <<EOF
+#!/bin/sh
+[ "\$1" = "-r" ] && echo "$PI_KERNEL" && exit 0
+exec /usr/bin/uname "\$@"
+EOF
+  cat > /tmp/shim/modprobe <<EOF
+#!/bin/sh
+exit 0
+EOF
+  chmod +x /tmp/shim/uname /tmp/shim/modprobe
+  PATH=/tmp/shim:$PATH apt-get install -y hailo-all
+  test -f /lib/modules/$PI_KERNEL/updates/dkms/hailo_pci.ko
+  rm -rf /tmp/shim
   apt-get clean
+'
 
 systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
   set -euo pipefail
