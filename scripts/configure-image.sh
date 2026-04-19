@@ -59,24 +59,35 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
 systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
   set -euo pipefail
   PI_KERNEL=$(dpkg -L linux-headers-rpi-2712 | awk -F/ "/^\/lib\/modules\// {print \$4; exit}")
+  echo "DIAG: PI_KERNEL=$PI_KERNEL"
 
   mkdir -p /tmp/shim
   cat > /tmp/shim/uname <<EOF
 #!/bin/sh
+echo "SHIM uname \$*  PATH=\$PATH  PPID=\$PPID" >> /tmp/shim.log
 [ "\$1" = "-r" ] && echo "$PI_KERNEL" && exit 0
 exec /usr/bin/uname "\$@"
 EOF
-  cat > /tmp/shim/modprobe <<"EOF"
+  cat > /tmp/shim/modprobe <<EOF
 #!/bin/sh
+echo "SHIM modprobe \$*  PATH=\$PATH" >> /tmp/shim.log
 exit 0
 EOF
   chmod +x /tmp/shim/uname /tmp/shim/modprobe
 
-  apt-get -o DPkg::Path="/tmp/shim:/usr/sbin:/usr/bin:/sbin:/bin" install -y hailo-all
+  if ! apt-get -o DPkg::Path="/tmp/shim:/usr/sbin:/usr/bin:/sbin:/bin" install -y hailo-all; then
+    echo "=== DIAG: /tmp/shim.log ==="
+    cat /tmp/shim.log 2>/dev/null || echo "(shim.log empty/missing)"
+    echo "=== DIAG: /var/log/hailort-pcie-driver.deb.log ==="
+    cat /var/log/hailort-pcie-driver.deb.log 2>/dev/null || echo "(postinst log missing)"
+    echo "=== DIAG: dkms make.log ==="
+    find /var/lib/dkms -name make.log -exec echo "--- {} ---" \; -exec cat {} \; 2>/dev/null || true
+    exit 1
+  fi
 
   test -f /lib/modules/$PI_KERNEL/updates/dkms/hailo_pci.ko
 
-  rm -rf /tmp/shim
+  rm -rf /tmp/shim /tmp/shim.log
   apt-get clean
 '
 
