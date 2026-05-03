@@ -41,7 +41,6 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
   set -euo pipefail
   apt-get update
   apt-get install -y --no-install-recommends python3-rosdep2 can-utils
-  rosdep init
   rosdep update --rosdistro=jazzy
   rosdep install --from-paths /opt/ros/jazzy/share -i -y --rosdistro=jazzy \
     --skip-keys "rosidl_default_runtime"
