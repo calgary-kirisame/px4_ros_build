@@ -9,7 +9,7 @@ apt-get install -y --no-install-recommends \
   libasio-dev libtinyxml2-dev libyaml-cpp-dev libspdlog-dev libopencv-dev \
   libssl-dev libxml2-dev libcurl4-openssl-dev libbullet-dev \
   liblog4cxx-dev libconsole-bridge-dev libpython3-dev \
-  libeigen3-dev libboost-dev pybind11-dev \
+  libeigen3-dev libboost-dev libboost-python-dev pybind11-dev \
   liblttng-ust-dev liblttng-ctl-dev lttng-tools \
   libsqlite3-dev libtinyxml-dev \
   ccache pkg-config
