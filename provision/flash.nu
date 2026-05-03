@@ -56,9 +56,12 @@ runcmd:
 wifis:
   wlan0:
     optional: true
+    regulatory-domain: \"US\"
     access-points:
       \"($inv.wifi_ssid)\":
-        password: \"($inv.wifi_password)\"
+        auth:
+          key-management: \"sae\"
+          password: \"($inv.wifi_password)\"
     dhcp4: true
 "
 

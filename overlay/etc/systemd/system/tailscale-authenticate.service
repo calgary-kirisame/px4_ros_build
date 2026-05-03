@@ -1,7 +1,7 @@
 [Unit]
 Description=Authenticate Tailscale using pre-shared auth key
 Documentation=https://tailscale.com/kb/1085/auth-keys
-After=network-online.target tailscaled.service cloud-final.service
+After=network-online.target tailscaled.service
 Wants=network-online.target
 Requires=tailscaled.service
 ConditionPathExists=/etc/tailscale/authkey

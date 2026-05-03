@@ -33,18 +33,20 @@ tar xzf "$ARTIFACT_DIR/xrce-dds-agent-arm64.tar.gz" -C "$MNT"
 cp -r "$REPO_DIR/overlay/etc/"* "$MNT/etc/"
 echo 'export PATH="/opt/xrce-dds/bin:$PATH"' > "$MNT/etc/profile.d/xrce-dds.sh"
 
-systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
+systemd-nspawn --pipe -D "$MNT" ldconfig
+echo '/opt/xrce-dds/lib' > "$MNT/etc/ld.so.conf.d/xrce-dds.conf"
+systemd-nspawn --pipe -D "$MNT" ldconfig
+
+systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
+  set -euo pipefail
   apt-get update
-systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
-  apt-get install -y --no-install-recommends \
-    python3-numpy python3-yaml python3-netifaces python3-empy \
-    python3-serial python3-opencv python3-pyaudio python3-dbus \
-    python3-packaging python3-lark python3-catkin-pkg python3-psutil \
-    python3-osrf-pycommon \
-    libtinyxml2-dev libyaml-cpp-dev libspdlog-dev \
-    can-utils
-systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
+  apt-get install -y --no-install-recommends python3-rosdep can-utils
+  rosdep init
+  rosdep update --rosdistro=jazzy
+  rosdep install --from-paths /opt/ros/jazzy/share -i -y --rosdistro=jazzy \
+    --skip-keys "rosidl_default_runtime"
   apt-get clean
+'
 
 systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
   set -euo pipefail
@@ -61,15 +63,29 @@ systemd-nspawn --pipe -D "$MNT" passwd -l pi
 
 systemd-nspawn --pipe -D "$MNT" raspi-config nonint do_change_locale en_US.UTF-8
 
-systemd-nspawn --pipe -D "$MNT" systemctl enable ssh xrce-dds-agent.service tailscale-authenticate.service wifi-regdomain.service
+systemd-nspawn --pipe -D "$MNT" systemctl enable \
+  ssh \
+  xrce-dds-agent.service \
+  tailscale-authenticate.service \
+  systemd-timesyncd.service
 
-# Pre-populate rfkill state so systemd-rfkill restores wifi unblocked on first
-# boot, not just after wifi-regdomain.service runs. Path/name matches the CM5
-# brcmfmac wifi killswitch (platform-1001100000.mmc:wlan).
-mkdir -p "$MNT/var/lib/systemd/rfkill"
-printf '0' > "$MNT/var/lib/systemd/rfkill/platform-1001100000.mmc:wlan"
+# Pi OS ships NetworkManager.state with WirelessEnabled=false, causing NM to
+# rfkill-block wifi on every boot regardless of kernel/systemd-rfkill state.
+mkdir -p "$MNT/var/lib/NetworkManager"
+cat > "$MNT/var/lib/NetworkManager/NetworkManager.state" <<'EOF'
+[main]
+NetworkingEnabled=true
+WirelessEnabled=true
+WWANEnabled=true
+EOF
 
-echo "dtparam=uart0=on" >> "$MNT/boot/firmware/config.txt"
+echo "dtoverlay=uart0-pi5,ctsrts" >> "$MNT/boot/firmware/config.txt"
+
+systemd-nspawn --pipe -D "$MNT" bash -c '
+  set -euo pipefail
+  rm -rf /var/lib/apt/lists/*
+  rm -rf /var/cache/debconf/*-old
+'
 
 umount "$MNT/boot/firmware"
 umount "$MNT"
