@@ -95,6 +95,46 @@ jobs:
           path: /tmp/xrce-dds-agent-arm64.tar.gz
           retention-days: 7
 
+  py-debs:
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: debian:trixie
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Restore cached debs
+        id: debs
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/py-debs
+          key: py-debs-${{ hashFiles('scripts/build-py-debs.sh') }}
+
+      - name: Install build dependencies
+        if: steps.debs.outputs.cache-hit != 'true'
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential debhelper dh-python pybuild-plugin-pyproject \
+            python3-all python3-setuptools python3-wheel \
+            dpkg-dev curl jq ca-certificates
+
+      - name: Build .debs
+        if: steps.debs.outputs.cache-hit != 'true'
+        run: scripts/build-py-debs.sh
+
+      - name: Save cache
+        if: steps.debs.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: /tmp/py-debs
+          key: py-debs-${{ hashFiles('scripts/build-py-debs.sh') }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: py-debs
+          path: /tmp/py-debs/*.deb
+          retention-days: 7
+
   px4-pkgs:
     needs: ros-base
     runs-on: ubuntu-24.04-arm
@@ -189,7 +229,7 @@ jobs:
           retention-days: 30
 
   assemble-image:
-    needs: [ros-base, xrce-agent, px4-pkgs]
+    needs: [ros-base, xrce-agent, px4-pkgs, py-debs]
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v6
@@ -207,6 +247,10 @@ jobs:
         with:
           name: xrce-dds-agent
           path: /tmp/artifacts
+      - uses: actions/download-artifact@v8
+        with:
+          name: py-debs
+          path: /tmp/artifacts/py-debs
 
       - name: Resolve Pi OS URL
         id: pios
