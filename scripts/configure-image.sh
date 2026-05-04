@@ -30,8 +30,8 @@ mount "$BOOT_DEV" "$MNT/boot/firmware"
 tar xzf "$ARTIFACT_DIR/ros-jazzy-px4-arm64.tar.gz" -C "$MNT"
 tar xzf "$ARTIFACT_DIR/xrce-dds-agent-arm64.tar.gz" -C "$MNT"
 
-mkdir -p "$MNT/tmp/py-debs"
-cp "$ARTIFACT_DIR/py-debs/"*.deb "$MNT/tmp/py-debs/"
+mkdir -p "$MNT/var/tmp/py-debs"
+cp "$ARTIFACT_DIR/py-debs/"*.deb "$MNT/var/tmp/py-debs/"
 
 cp -r "$REPO_DIR/overlay/etc/"* "$MNT/etc/"
 echo 'export PATH="/opt/xrce-dds/bin:$PATH"' > "$MNT/etc/profile.d/xrce-dds.sh"
@@ -44,8 +44,8 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
   set -euo pipefail
   apt-get update
   apt-get install -y --no-install-recommends python3-rosdep2 can-utils
-  apt-get install -y --no-install-recommends /tmp/py-debs/*.deb
-  rm -rf /tmp/py-debs
+  apt-get install -y --no-install-recommends /var/tmp/py-debs/*.deb
+  rm -rf /var/tmp/py-debs
   rosdep update --rosdistro=jazzy
   rosdep install --from-paths /opt/ros/jazzy/share -i -y --rosdistro=jazzy \
     --dependency-types exec \
