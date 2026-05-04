@@ -25,8 +25,9 @@ build_pypi_deb() {
   cd "$WORK"
   rm -f "$sdist_filename"
   curl -fsSL -o "$sdist_filename" "$sdist_url"
-  local sdist_dir
-  sdist_dir=$(tar tzf "$sdist_filename" | head -1 | cut -d/ -f1)
+  local sdist_members
+  sdist_members=$(tar tzf "$sdist_filename")
+  local sdist_dir="${sdist_members%%/*}"
   rm -rf "$sdist_dir"
   tar xzf "$sdist_filename"
   cd "$sdist_dir"
