@@ -4,7 +4,9 @@ After=network.target
 
 [Service]
 Type=simple
+ExecStartPre=/usr/bin/python3 /etc/xrce-dds/serial-guard.py pre-start /dev/ttyAMA0 35
 ExecStart=/opt/xrce-dds/bin/MicroXRCEAgent serial --dev /dev/ttyAMA0 -b 921600
+ExecStopPost=/usr/bin/python3 /etc/xrce-dds/serial-guard.py post-stop
 Restart=always
 RestartSec=3
 
