@@ -43,13 +43,16 @@ systemd-nspawn --pipe -D "$MNT" ldconfig
 systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
   set -euo pipefail
   apt-get update
-  apt-get install -y --no-install-recommends python3-rosdep2 can-utils
+  apt-get install -y --no-install-recommends \
+    ca-certificates curl can-utils \
+    python3-argcomplete python3-catkin-pkg python3-dbus python3-empy \
+    python3-importlib-metadata python3-lark python3-netifaces \
+    python3-numpy python3-opencv python3-osrf-pycommon \
+    python3-packaging python3-psutil python3-pyaudio \
+    python3-serial python3-yaml \
+    libopencv-dev libspdlog-dev libtinyxml2-dev libyaml-cpp-dev
   apt-get install -y --no-install-recommends /var/tmp/py-debs/*.deb
   rm -rf /var/tmp/py-debs
-  rosdep update --rosdistro=jazzy
-  rosdep install --from-paths /opt/ros/jazzy/share -i -y --rosdistro=jazzy \
-    --dependency-types exec \
-    --skip-keys "rosidl_default_runtime gtest_vendor gmock_vendor mimick_vendor uncrustify_vendor sros2 rosidl_generator_rs rmw_connextdds lifecycle python3-speechrecognition"
   apt-get clean
 '
 
