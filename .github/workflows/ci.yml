@@ -8,6 +8,8 @@ on:
 env:
   PIOS_MANIFEST_URL: https://downloads.raspberrypi.com/os_list_imagingutility_v4.json
   XRCE_DDS_VERSION: v2.4.3
+  PX4_AUTOPILOT_REPO: https://github.com/calgary-kirisame/PX4-Autopilot.git
+  PX4_AUTOPILOT_REF: uxrce-v1.16.2-fix
 
 jobs:
   ros-base:
@@ -143,6 +145,28 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Resolve PX4 firmware ref
+        id: px4-ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+
+          if [[ "${PX4_AUTOPILOT_REF}" =~ ^[0-9a-f]{40}$ ]]; then
+            sha="${PX4_AUTOPILOT_REF}"
+          else
+            sha="$(git ls-remote "${PX4_AUTOPILOT_REPO}" \
+              "${PX4_AUTOPILOT_REF}" \
+              "refs/heads/${PX4_AUTOPILOT_REF}" \
+              "refs/tags/${PX4_AUTOPILOT_REF}" \
+              | cut -f1 | head -n1)"
+          fi
+
+          test -n "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Resolved ${PX4_AUTOPILOT_REF} to $sha"
+
       - name: Restore cached outputs
         id: pkgs-cache
         uses: actions/cache/restore@v5
@@ -150,7 +174,7 @@ jobs:
           path: |
             /tmp/ros-jazzy-px4-arm64.tar.gz
             /tmp/px4-single-plan_*.deb
-          key: px4-pkgs-outputs-${{ hashFiles('repos/jazzy-pios-trixie.repos', 'scripts/build-ros.sh', 'scripts/install-build-deps.sh', 'src/px4_msgs/**', 'src/px4_single_plan/**', 'scripts/package-deb.sh') }}
+          key: px4-pkgs-outputs-${{ steps.px4-ref.outputs.sha }}-${{ hashFiles('repos/jazzy-pios-trixie.repos', 'scripts/build-ros.sh', 'scripts/install-build-deps.sh', 'src/px4_single_plan/**', 'scripts/package-deb.sh', 'scripts/sync-px4-msgs.sh') }}
 
       - name: Install build dependencies
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
@@ -168,7 +192,7 @@ jobs:
       - uses: hendrikmuhs/ccache-action@v1.2
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
         with:
-          key: px4-pkgs-${{ hashFiles('src/px4_msgs/**', 'src/px4_single_plan/**') }}
+          key: px4-pkgs-${{ steps.px4-ref.outputs.sha }}-${{ hashFiles('src/px4_single_plan/**', 'scripts/sync-px4-msgs.sh') }}
 
       - uses: actions/download-artifact@v8
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
@@ -179,6 +203,10 @@ jobs:
       - name: Extract ROS 2 base
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
         run: tar xzf /tmp/ros-jazzy-base-pios-arm64.tar.gz -C /
+
+      - name: Sync px4_msgs from PX4 firmware
+        if: steps.pkgs-cache.outputs.cache-hit != 'true'
+        run: scripts/sync-px4-msgs.sh "${{ env.PX4_AUTOPILOT_REPO }}" "${{ steps.px4-ref.outputs.sha }}"
 
       - name: Build PX4 packages
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
@@ -214,7 +242,7 @@ jobs:
           path: |
             /tmp/ros-jazzy-px4-arm64.tar.gz
             /tmp/px4-single-plan_*.deb
-          key: px4-pkgs-outputs-${{ hashFiles('repos/jazzy-pios-trixie.repos', 'scripts/build-ros.sh', 'scripts/install-build-deps.sh', 'src/px4_msgs/**', 'src/px4_single_plan/**', 'scripts/package-deb.sh') }}
+          key: px4-pkgs-outputs-${{ steps.px4-ref.outputs.sha }}-${{ hashFiles('repos/jazzy-pios-trixie.repos', 'scripts/build-ros.sh', 'scripts/install-build-deps.sh', 'src/px4_single_plan/**', 'scripts/package-deb.sh', 'scripts/sync-px4-msgs.sh') }}
 
       - uses: actions/upload-artifact@v7
         with:

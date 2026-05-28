@@ -41,6 +41,11 @@ except Exception:
 
 FORCE_ARM_MAGIC = 21196.0
 ARMING_STATE_ARMED_VALUE = 2
+PREFLIGHT_AUTO_DISARM_REASON = getattr(
+    VehicleStatus,
+    'ARM_DISARM_REASON_PREFLIGHT_INACTION',
+    getattr(VehicleStatus, 'ARM_DISARM_REASON_AUTO_DISARM_PREFLIGHT', 8),
+)
 DEFAULT_TAKEOFF_ALTITUDE_M = 5.0
 DEFAULT_CAMERA_TRIGGER_DISTANCE_M = 4.0
 
@@ -517,7 +522,7 @@ class OffboardRunner(Node):
                     f'Arm/disarm reasons: latest_arming_reason={self.latest_arming_reason}, '
                     f'latest_disarming_reason={self.latest_disarming_reason}'
                 )
-                if self.latest_disarming_reason == VehicleStatus.ARM_DISARM_REASON_PREFLIGHT_INACTION:
+                if self.latest_disarming_reason == PREFLIGHT_AUTO_DISARM_REASON:
                     self.get_logger().warn(
                         'PX4 auto-disarmed due to preflight inactivity. Increase/disable COM_DISARM_PRFLT in pxh>, '
                         'e.g. `param set COM_DISARM_PRFLT 60` or `param set COM_DISARM_PRFLT -1`.'
