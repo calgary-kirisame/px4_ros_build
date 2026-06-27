@@ -87,7 +87,24 @@ WirelessEnabled=true
 WWANEnabled=true
 EOF
 
-echo "dtoverlay=uart0-pi5,ctsrts" >> "$MNT/boot/firmware/config.txt"
+# Fleet-invariant boot config baked into the image. Per-unit deltas
+# (e.g. drone3's dead cam0 -> cam1) and on-hardware verification stay in
+# provision/playbooks/*.yml -- those edit the same lines idempotently.
+cat >> "$MNT/boot/firmware/config.txt" <<'EOF'
+
+# Pixhawk telemetry UART (RTS/CTS)
+dtoverlay=uart0-pi5,ctsrts
+
+# CSI cameras: CM carriers don't auto-detect, so name each sensor's port.
+# Mirrors the fleet default in playbooks/camera.yml (verified there via rpicam-hello).
+camera_auto_detect=0
+dtoverlay=imx219,cam1
+dtoverlay=ov9281,cam0
+
+# DW1000 UWB over spidev (userspace driver). RST=GPIO25 (input, no pull); IRQ=GPIO24.
+dtparam=spi=on
+gpio=25=ip,np
+EOF
 
 systemd-nspawn --pipe -D "$MNT" bash -c '
   set -euo pipefail
