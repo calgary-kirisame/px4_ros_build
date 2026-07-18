@@ -1,0 +1,223 @@
+---
+- name: Check PX4 companion health
+  hosts: drones
+  gather_facts: false
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    health_ssh_timeout_s: 4
+    ros_setup: /opt/ros/jazzy/setup.bash
+    topic_timeout_s: 15
+    required_topics:
+      - /fmu/out/timesync_status [px4_msgs/msg/TimesyncStatus]
+      - /fmu/out/vehicle_status_v1 [px4_msgs/msg/VehicleStatus]
+      - /fmu/out/vehicle_gps_position [px4_msgs/msg/SensorGps]
+      - /fmu/out/vehicle_local_position [px4_msgs/msg/VehicleLocalPosition]
+      - /fmu/in/offboard_control_mode [px4_msgs/msg/OffboardControlMode]
+      - /fmu/in/trajectory_setpoint [px4_msgs/msg/TrajectorySetpoint]
+      - /fmu/in/vehicle_command [px4_msgs/msg/VehicleCommand]
+
+  tasks:
+    - name: Check SSH port reachability
+      ansible.builtin.wait_for:
+        host: "{{ (hostvars[inventory_hostname].ansible_ssh_host | default(hostvars[inventory_hostname].ansible_host)) | default(inventory_hostname) }}"
+        port: "{{ ansible_port | default(22) }}"
+        state: started
+        connect_timeout: 2
+        timeout: "{{ health_ssh_timeout_s }}"
+      delegate_to: localhost
+      register: ssh_port_check
+      changed_when: false
+      failed_when: false
+
+    - name: Report offline drone
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} is offline; skipping health check"
+      when: ssh_port_check.state | default('') != 'started'
+
+    - name: Skip offline drone
+      ansible.builtin.meta: end_host
+      when: ssh_port_check.state | default('') != 'started'
+
+    - name: Report online drone
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} is online; running health check"
+
+    - name: Run companion health check
+      ansible.builtin.shell: |
+        set -o pipefail
+        if [ -r "{{ ros_setup }}" ]; then
+          source "{{ ros_setup }}" >/dev/null 2>&1 || true
+        fi
+        python3 - <<'PY'
+        import json
+        import glob
+        import re
+        import shutil
+        import subprocess
+        import sys
+
+        timeout_s = {{ topic_timeout_s | int }}
+        required_topics = {{ required_topics | to_json }}
+        samples = {
+            "timesync": {
+                "topic": "/fmu/out/timesync_status",
+                "type": "px4_msgs/msg/TimesyncStatus",
+                "marker": "round_trip_time:",
+            },
+            "vehicle_status": {
+                "topic": "/fmu/out/vehicle_status_v1",
+                "type": "px4_msgs/msg/VehicleStatus",
+                "marker": "pre_flight_checks_pass:",
+            },
+            "gps": {
+                "topic": "/fmu/out/vehicle_gps_position",
+                "type": "px4_msgs/msg/SensorGps",
+                "marker": "fix_type:",
+            },
+        }
+
+        def run(args):
+            try:
+                return subprocess.run(args, capture_output=True, text=True, timeout=timeout_s)
+            except subprocess.TimeoutExpired as exc:
+                return subprocess.CompletedProcess(args, 124, exc.stdout or "", exc.stderr or "timeout")
+            except FileNotFoundError as exc:
+                return subprocess.CompletedProcess(args, 127, "", str(exc))
+
+        def echo_sample(topic, msg_type):
+            return run([
+                "ros2", "topic", "echo", topic, msg_type,
+                "--qos-reliability", "best_effort",
+                "--qos-durability", "transient_local",
+                "--qos-depth", "1",
+                "--once",
+            ])
+
+        def first_lines(text, limit=6):
+            return "\n".join((text or "").strip().splitlines()[:limit])
+
+        def check_camera():
+            if shutil.which("rpicam-hello"):
+                tool = "rpicam-hello"
+                result = run([tool, "--list-cameras"])
+            elif shutil.which("libcamera-hello"):
+                tool = "libcamera-hello"
+                result = run([tool, "--list-cameras"])
+            else:
+                return {
+                    "ok": False,
+                    "status": "tool_missing",
+                    "tool": "missing",
+                    "output": "",
+                }
+
+            output = (result.stdout or "") + (result.stderr or "")
+            no_camera = "No cameras available" in output
+            return {
+                "ok": result.returncode == 0 and not no_camera and bool(output.strip()),
+                "status": "ok" if result.returncode == 0 and not no_camera and bool(output.strip()) else ("no_camera" if no_camera else "error"),
+                "tool": tool,
+                "output": first_lines(output),
+            }
+
+        def check_hailo():
+            devices = sorted(glob.glob("/dev/hailo*"))
+            driver_loaded = False
+            try:
+                with open("/proc/modules", "r", encoding="utf-8") as modules:
+                    driver_loaded = any(line.startswith("hailo") for line in modules)
+            except OSError:
+                pass
+
+            if not shutil.which("hailortcli"):
+                return {
+                    "ok": False,
+                    "status": "tool_missing",
+                    "devices": devices,
+                    "driver_loaded": driver_loaded,
+                    "identify": "",
+                }
+
+            result = run(["hailortcli", "fw-control", "identify"])
+            output = (result.stdout or "") + (result.stderr or "")
+            identify = output.strip()
+            return {
+                "ok": result.returncode == 0 and bool(identify),
+                "status": "ok" if result.returncode == 0 and bool(identify) else ("no_device" if result.returncode == 0 else "error"),
+                "devices": devices,
+                "driver_loaded": driver_loaded,
+                "identify": first_lines(output),
+            }
+
+        topic_list = run(["ros2", "topic", "list", "-t"])
+        topics_stdout = topic_list.stdout or ""
+        missing_topics = [topic for topic in required_topics if topic not in topics_stdout]
+
+        sample_results = {}
+        for name, sample in samples.items():
+            result = echo_sample(sample["topic"], sample["type"])
+            sample_results[name] = {
+                "rc": result.returncode,
+                "ok": result.returncode == 0 and sample["marker"] in (result.stdout or ""),
+                "stdout": result.stdout or "",
+                "stderr": result.stderr or "",
+            }
+
+        vehicle_status_stdout = sample_results["vehicle_status"]["stdout"]
+        gps_stdout = sample_results["gps"]["stdout"]
+        gps_fix_match = re.search(r"fix_type:\s*(-?\d+)", gps_stdout)
+        gps_sat_match = re.search(r"satellites_used:\s*(-?\d+)", gps_stdout)
+        gps_fix_type = int(gps_fix_match.group(1)) if gps_fix_match else -1
+        gps_satellites_used = int(gps_sat_match.group(1)) if gps_sat_match else -1
+        gps_sample_ok = sample_results["gps"]["ok"]
+        camera = check_camera()
+        hailo = check_hailo()
+
+        summary = {
+            "host": "{{ inventory_hostname }}",
+            "camera": camera,
+            "required_topics_missing": missing_topics,
+            "topic_list_ok": topic_list.returncode == 0,
+            "timesync_ok": sample_results["timesync"]["ok"],
+            "vehicle_status_ok": sample_results["vehicle_status"]["ok"],
+            "pre_flight_checks_pass": bool(re.search(r"(?m)^pre_flight_checks_pass:\s*true", vehicle_status_stdout)),
+            "failsafe": bool(re.search(r"(?m)^failsafe:\s*true", vehicle_status_stdout)),
+            "hailo": hailo,
+            "gps_status": "no_gps_sample" if not gps_sample_ok else ("fix" if gps_fix_type >= 3 else ("partial_fix" if gps_fix_type > 0 else "no_fix")),
+            "gps_fix_type": gps_fix_type,
+            "gps_satellites_used": gps_satellites_used,
+        }
+        summary["ok"] = (
+            summary["topic_list_ok"]
+            and not summary["required_topics_missing"]
+            and summary["timesync_ok"]
+            and summary["vehicle_status_ok"]
+            and gps_sample_ok
+            and camera["ok"]
+            and hailo["ok"]
+        )
+
+        print(json.dumps(summary, sort_keys=True))
+        sys.exit(0 if summary["ok"] else 1)
+        PY
+      args:
+        executable: /bin/bash
+      register: health_check
+      changed_when: false
+      failed_when: false
+
+    - name: Parse health summary
+      ansible.builtin.set_fact:
+        health_summary: "{{ health_check.stdout | from_json }}"
+
+    - name: Print health summary
+      ansible.builtin.debug:
+        var: health_summary
+
+    - name: Assert companion health
+      ansible.builtin.assert:
+        that:
+          - health_summary.ok | bool
+        fail_msg: "Health check failed: {{ health_summary }}"
+        success_msg: "Health check passed: {{ health_summary }}"

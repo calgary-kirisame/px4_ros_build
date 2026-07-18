@@ -1,10 +1,13 @@
 all:
   vars:
     # Cloud-init provisioning vars (used by flash.yml on localhost)
-    wifi_ssid: Recover.Me-65F3
-    wifi_password: n2mtaw7sn2
-    maav_password_hash: "$6$p7HlSk16QTna14Wp$eOm3lAmQRJgUCk/6TjMtg6kYJL6Z3y8a1/7yjoBUrzdZWkv1hl04C55.ae5ZvA48Sb/RdIymMZ6DCbfX0Agws."
-    ssh_authorized_keys: ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBngpxnPioh58n6ZrB7+eJ+ShBPTOpUP62pCkU+aJ8l/ calgary@pi.local"]
+    wifi_ssid: NameOfNetwork
+    wifi_password: password
+    maav_password_hash: ""
+    ssh_authorized_keys: [""]
+    # Reusable, tagged pre-auth key from https://login.tailscale.com/admin/settings/keys
+    # Leave empty to skip Tailscale authentication at flash time.
+    tailscale_authkey: ""
   children:
     drones:
       hosts:

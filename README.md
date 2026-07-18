@@ -6,7 +6,7 @@ Pipeline producing Pi OS image for the CM5 with ROS 2 Jazzy and PX4 companion so
 - CycloneDDS as the default RMW
 - Micro XRCE-DDS Agent v2.4.x running as a systemd service
 - `px4_msgs` message definitions from px4_ros_com_ws
-- `px4_single_plan` flight control nodes sans sim
+- `px4_single_plan` flight control nodes built separately for deployment and excluded from the base image
 - rosbag2 for flight data recording
 - User: `maav`
 
@@ -17,6 +17,7 @@ Follow `How 2 flash` if you haven't flashed yet. Otherwise if the drone is acces
 - `provision/inventory.yml` fleet hosts and per-deployment vars (WiFi etc.)
 - `provision/flash.nu` flashes one CM5 via rpiboot + rpi-imager, generating cloud-init user-data/network-config from inventory
 - `provision/playbooks/deploy.yml` installs the `px4-single-plan` .deb across the fleet over SSH
+- `provision/playbooks/health.yml` checks companion ROS/uXRCE/GPS data-path health across the fleet
 - `provision/playbooks/hailo.yml` installs runtime and driver
 
 ### How 2 flash

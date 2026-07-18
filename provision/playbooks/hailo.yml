@@ -3,7 +3,20 @@
   hosts: drones
   become: true
 
+  vars:
+    boot_config: /boot/firmware/config.txt
+
   tasks:
+    - name: Enable external PCIe x1 link (Gen 3) for Hailo-8
+      ansible.builtin.lineinfile:
+        path: "{{ boot_config }}"
+        line: "{{ item }}"
+        state: present
+      loop:
+        - "dtparam=pciex1"
+        - "dtparam=pciex1_gen=3"
+      register: pcie_config
+
     - name: Install hailort packages
       ansible.builtin.apt:
         name:
@@ -11,10 +24,23 @@
           - hailort-pcie-driver
           - python3-hailort
         update_cache: true
+      register: hailort_install
 
     - name: Verify hailo_pci module is built
       ansible.builtin.command: modinfo hailo_pci
       changed_when: false
 
-    - name: Reboot to load hailo_pci
+    - name: Reboot to apply PCIe config and load hailo_pci
       ansible.builtin.reboot:
+      when: pcie_config is changed or hailort_install is changed
+
+    # Fail-fast: prove the bus came up and the device is alive, don't assume.
+    - name: Assert Hailo enumerated on the PCIe bus
+      ansible.builtin.command: "lspci -d 1e60:"
+      register: hailo_lspci
+      changed_when: false
+      failed_when: "'1e60' not in hailo_lspci.stdout"
+
+    - name: Assert Hailo firmware responds
+      ansible.builtin.command: hailortcli fw-control identify
+      changed_when: false

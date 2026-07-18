@@ -92,6 +92,9 @@ EOF
 # provision/playbooks/*.yml -- those edit the same lines idempotently.
 cat >> "$MNT/boot/firmware/config.txt" <<'EOF'
 
+# Use the CM5's external U.FL Wi-Fi/Bluetooth antenna.
+dtparam=ant2
+
 # Pixhawk telemetry UART (RTS/CTS)
 dtoverlay=uart0-pi5,ctsrts
 

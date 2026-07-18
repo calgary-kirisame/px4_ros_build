@@ -5,8 +5,10 @@ set -euo pipefail
 # Usage: package-deb.sh [install-base] [version]
 
 INSTALL_BASE=${1:-/opt/ros/jazzy}
+INSTALL_BASE=${INSTALL_BASE%/}
 VERSION=${2:-"0.1.0+$(date +%Y%m%d)"}
 OUTPUT_DIR=/tmp
+ROS_PREFIX=/opt/ros/jazzy
 
 STAGING=$(mktemp -d)
 trap 'rm -rf "$STAGING"' EXIT
@@ -17,28 +19,29 @@ PY_PKG_DIR=$(find "$INSTALL_BASE/lib" -type d -name px4_single_plan \
 
 [[ -n "$PY_PKG_DIR" ]] || { echo "Error: px4_single_plan not found in $INSTALL_BASE"; exit 1; }
 
-# Preserve the relative path structure under /opt/ros/jazzy
-PY_REL=${PY_PKG_DIR#/}
-mkdir -p "$STAGING/$(dirname "$PY_REL")"
-cp -r "$PY_PKG_DIR" "$STAGING/$PY_REL"
+# Install the standalone colcon tree into the image's ROS prefix.
+PY_REL=${PY_PKG_DIR#"$INSTALL_BASE"/}
+[[ "$PY_REL" != "$PY_PKG_DIR" ]] || { echo "Error: $PY_PKG_DIR is outside $INSTALL_BASE"; exit 1; }
+mkdir -p "$STAGING$ROS_PREFIX/$(dirname "$PY_REL")"
+cp -r "$PY_PKG_DIR" "$STAGING$ROS_PREFIX/$PY_REL"
 
 # Entry point scripts
 if [[ -d "$INSTALL_BASE/lib/px4_single_plan" ]]; then
-    mkdir -p "$STAGING/opt/ros/jazzy/lib"
-    cp -r "$INSTALL_BASE/lib/px4_single_plan" "$STAGING/opt/ros/jazzy/lib/"
+    mkdir -p "$STAGING$ROS_PREFIX/lib"
+    cp -r "$INSTALL_BASE/lib/px4_single_plan" "$STAGING$ROS_PREFIX/lib/"
 fi
 
 # Share data (launch files, resources, package.xml)
 if [[ -d "$INSTALL_BASE/share/px4_single_plan" ]]; then
-    mkdir -p "$STAGING/opt/ros/jazzy/share"
-    cp -r "$INSTALL_BASE/share/px4_single_plan" "$STAGING/opt/ros/jazzy/share/"
+    mkdir -p "$STAGING$ROS_PREFIX/share"
+    cp -r "$INSTALL_BASE/share/px4_single_plan" "$STAGING$ROS_PREFIX/share/"
 fi
 
 # Ament index entry
 AMENT_INDEX="$INSTALL_BASE/share/ament_index/resource_index/packages/px4_single_plan"
 if [[ -f "$AMENT_INDEX" ]]; then
-    mkdir -p "$STAGING/opt/ros/jazzy/share/ament_index/resource_index/packages"
-    cp "$AMENT_INDEX" "$STAGING/opt/ros/jazzy/share/ament_index/resource_index/packages/"
+    mkdir -p "$STAGING$ROS_PREFIX/share/ament_index/resource_index/packages"
+    cp "$AMENT_INDEX" "$STAGING$ROS_PREFIX/share/ament_index/resource_index/packages/"
 fi
 
 # Debian control

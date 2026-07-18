@@ -1,0 +1,69 @@
+---
+- name: Configure CSI cameras (downward imx219 + forward ov9281) on CM5
+  hosts: drones
+  become: true
+
+  vars:
+    boot_config: /boot/firmware/config.txt
+    # CM carriers don't auto-detect cameras; each sensor's port must be named
+    # explicitly. Port <-> i2c/csi mapping on CM5/RP1 (for reading dmesg):
+    #   cam0 -> i2c@88000 / csi@110000 ;  cam1 -> i2c@70000 / csi@128000
+    # A carrier's "MIPI1" silkscreen does NOT reliably mean cam1 -- try both.
+    # NOTE: this fleet default is ALSO baked into scripts/configure-image.sh
+    # (camera_auto_detect=0 + these dtoverlays); keep the two in sync. This
+    # playbook then just verifies on-hardware and applies per-unit overrides.
+    # Override a single host's layout with, e.g.:
+    #   ansible-playbook playbooks/camera.yml -l drone3 -K \
+    #     -e '{"cameras":[{"sensor":"imx219","port":"cam1"}]}'
+    cameras:
+      - sensor: imx219   # downward Camera Module 2 (RGGB rolling shutter)
+        port: cam1
+      - sensor: ov9281   # forward global-shutter mono (kernel driver: ov9282)
+        port: cam0
+
+  tasks:
+    - name: Disable camera auto-detect (CM needs explicit overlays)
+      ansible.builtin.lineinfile:
+        path: "{{ boot_config }}"
+        regexp: '^camera_auto_detect='
+        line: "camera_auto_detect=0"
+      register: cam_autodetect
+
+    - name: Set explicit camera overlay per sensor
+      ansible.builtin.lineinfile:
+        path: "{{ boot_config }}"
+        regexp: '^dtoverlay={{ item.sensor }}\b'
+        line: "dtoverlay={{ item.sensor }},{{ item.port }}"
+      loop: "{{ cameras }}"
+      loop_control:
+        label: "{{ item.sensor }},{{ item.port }}"
+      register: cam_overlay
+
+    - name: Reboot if camera config changed
+      ansible.builtin.reboot:
+      when: cam_autodetect is changed or cam_overlay is changed
+
+    # Fail-fast: prove every sensor actually enumerated. A sensor that the
+    # overlay/driver match but that fails to enumerate (e.g. ov9282 logs
+    # "fail to write MIPI_CTRL00 / failed to power-on / probe ... -5" EIO, or
+    # imx219 "-EREMOTEIO") is a PHYSICAL fault -- reseat/flip the FFC, check the
+    # cable; do not keep tweaking config. (drone3's cam0 connector is dead, so
+    # its forward cam can't use cam0 -- override `cameras` for that host.)
+    - name: List detected cameras
+      ansible.builtin.command: rpicam-hello --list-cameras
+      register: cam_list
+      changed_when: false
+
+    - name: Assert each configured sensor is detected
+      ansible.builtin.assert:
+        that: "item.sensor in cam_list.stdout"
+        fail_msg: >-
+          {{ item.sensor }} ({{ item.port }}) not in rpicam-hello output --
+          likely an FFC seating/cable fault on {{ item.port }}, not config.
+      loop: "{{ cameras }}"
+      loop_control:
+        label: "{{ item.sensor }},{{ item.port }}"
+
+    - name: Show detected cameras
+      ansible.builtin.debug:
+        var: cam_list.stdout_lines

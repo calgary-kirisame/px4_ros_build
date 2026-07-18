@@ -57,6 +57,8 @@ class OffboardRunner(Node):
         self.declare_parameter('waypoint_file', 'waypoints_q4_1.yaml')
         self.declare_parameter('field_config_file', DEFAULT_FIELD_CONFIG_FILE)
         self.declare_parameter('takeoff_altitude_m', DEFAULT_TAKEOFF_ALTITUDE_M)
+        self.declare_parameter('send_takeoff_command', True)
+        self.declare_parameter('waypoint_z_relative_to_launch', False)
         self.declare_parameter('land_after_waypoint_index', -1)
         self.declare_parameter('loop_waypoints', False)
         self.declare_parameter('wait_for_start_confirmation', False)
@@ -72,6 +74,8 @@ class OffboardRunner(Node):
         self.waypoint_file = self.get_parameter('waypoint_file').value
         self.field_config_file = self.get_parameter('field_config_file').value.strip()
         self.takeoff_altitude_m = float(self.get_parameter('takeoff_altitude_m').value)
+        self.send_takeoff_command = bool(self.get_parameter('send_takeoff_command').value)
+        self.waypoint_z_relative_to_launch = bool(self.get_parameter('waypoint_z_relative_to_launch').value)
         self.land_after_waypoint_index = int(self.get_parameter('land_after_waypoint_index').value)
         self.loop_waypoints = bool(self.get_parameter('loop_waypoints').value)
         self.wait_for_start_confirmation = bool(self.get_parameter('wait_for_start_confirmation').value)
@@ -173,6 +177,8 @@ class OffboardRunner(Node):
             f'Offboard runner ready: namespace={ns_label}, waypoint_file={self.waypoint_file}, '
             f'takeoff_altitude_m={self.takeoff_altitude_m}, land_after_waypoint_index={self.land_after_waypoint_index}, '
             f'loop_waypoints={self.loop_waypoints}, wait_for_start_confirmation={self.wait_for_start_confirmation}, '
+            f'send_takeoff_command={self.send_takeoff_command}, '
+            f'waypoint_z_relative_to_launch={self.waypoint_z_relative_to_launch}, '
             f'camera_trigger_distance_m={self.camera_trigger_distance_m}, '
             f'terminate_return_altitude_m={self.terminate_return_altitude_m}'
         )
@@ -476,6 +482,22 @@ class OffboardRunner(Node):
         m.timestamp = int(Clock().now().nanoseconds / 1000)
         self.cmd_pub.publish(m)
 
+    def _target_z(self, z: float):
+        if self.waypoint_z_relative_to_launch and self._launch_position is not None:
+            return float(self._launch_position[2]) + float(z)
+        return float(z)
+
+    def _target_z_from_launch_altitude(self, altitude_m: float):
+        if self.waypoint_z_relative_to_launch and self._launch_position is not None:
+            return float(self._launch_position[2]) - abs(float(altitude_m))
+        return -abs(float(altitude_m))
+
+    def _takeoff_started_by_altitude(self):
+        if self.waypoint_z_relative_to_launch and self._launch_position is not None:
+            altitude_above_launch_m = float(self._launch_position[2]) - float(self.pos.z)
+            return altitude_above_launch_m >= min(4.5, max(0.5, abs(self.takeoff_altitude_m) * 0.9))
+        return self.pos.z <= -4.5
+
     def _arm_state_machine(self):
         now_us = int(self.get_clock().now().nanoseconds / 1000)
         if not self._start_confirmed:
@@ -540,12 +562,17 @@ class OffboardRunner(Node):
 
         # armed: keep retrying takeoff command until we are in takeoff/offboard or above ~4.5m (NED z <= -4.5)
         if not self._takeoff_announced:
-            self.get_logger().info(
-                f'Armed — sending TAKEOFF to {self.takeoff_altitude_m:.1f}m and waiting for climb'
-            )
+            if self.send_takeoff_command:
+                self.get_logger().info(
+                    f'Armed — sending TAKEOFF to {self.takeoff_altitude_m:.1f}m and waiting for climb'
+                )
+            else:
+                self.get_logger().info(
+                    f'Armed — climbing via OFFBOARD setpoint to {self.takeoff_altitude_m:.1f}m above launch'
+                )
             self._takeoff_announced = True
 
-        if now_us - self._last_takeoff_cmd_us > 1_000_000:
+        if self.send_takeoff_command and now_us - self._last_takeoff_cmd_us > 1_000_000:
             self._last_takeoff_cmd_us = now_us
             self._publish_vehicle_command(
                 VehicleCommand.VEHICLE_CMD_NAV_TAKEOFF,
@@ -571,7 +598,7 @@ class OffboardRunner(Node):
         takeoff_started = (
             self.nav_state == VehicleStatus.NAVIGATION_STATE_AUTO_TAKEOFF
             or self.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD
-            or self.pos.z <= -4.5
+            or self._takeoff_started_by_altitude()
         )
 
         if takeoff_started and not self._offboard_started:
@@ -584,7 +611,7 @@ class OffboardRunner(Node):
         return (
             float(self.pos.x),
             float(self.pos.y),
-            -abs(self.terminate_return_altitude_m),
+            self._target_z_from_launch_altitude(self.terminate_return_altitude_m),
         )
 
     def _return_to_launch_target(self):
@@ -593,7 +620,7 @@ class OffboardRunner(Node):
         return (
             float(self._launch_position[0]),
             float(self._launch_position[1]),
-            -abs(self.terminate_return_altitude_m),
+            self._target_z_from_launch_altitude(self.terminate_return_altitude_m),
         )
 
     def _offboard_loop(self):
@@ -621,7 +648,7 @@ class OffboardRunner(Node):
             target_yaw = self._initial_yaw if self._initial_yaw_set else 0.0
         else:
             wp = self.waypoints[self.wp_idx]
-            target = (float(wp['x']), float(wp['y']), float(wp['z']))
+            target = (float(wp['x']), float(wp['y']), self._target_z(wp['z']))
             target_yaw = float(wp.get('yaw', self._initial_yaw if self._initial_yaw_set else 0.0))
 
         # publish trajectory setpoint

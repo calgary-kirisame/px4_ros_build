@@ -1,0 +1,14 @@
+field_config_file: square_5m_field_gps.yaml
+waypoint_frame: field
+
+dis_min: 0.6
+wp_hold_s: 1.0
+
+wp:
+  - {x: 2.5, y: 2.5, z: -5.0, hold_s: 1.0}
+  - {x: 0.0, y: 0.0, z: -5.0, hold_s: 1.0}
+  - {x: 5.0, y: 0.0, z: -5.5, hold_s: 1.0}
+  - {x: 5.0, y: 5.0, z: -6.0, hold_s: 1.0}
+  - {x: 0.0, y: 5.0, z: -5.5, hold_s: 1.0}
+  - {x: 0.0, y: 0.0, z: -5.0, hold_s: 1.0}
+  - {x: 2.5, y: 2.5, z: -5.0, hold_s: 1.0}
