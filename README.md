@@ -5,8 +5,7 @@ Pipeline producing Pi OS image for the CM5 with ROS 2 Jazzy and PX4 companion so
 - ROS 2 Jazzy at `/opt/ros/jazzy/`, sourced automatically on login
 - CycloneDDS as the default RMW
 - Micro XRCE-DDS Agent v2.4.x running as a systemd service
-- `px4_msgs` message definitions from px4_ros_com_ws
-- `px4_single_plan` flight control nodes built separately for deployment and excluded from the base image
+- `px4_msgs` generated from the PX4-Autopilot commit pinned by image CI
 - rosbag2 for flight data recording
 - User: `maav`
 
@@ -16,7 +15,6 @@ Follow `How 2 flash` if you haven't flashed yet. Otherwise if the drone is acces
 
 - `provision/inventory.yml` fleet hosts and per-deployment vars (WiFi etc.)
 - `provision/flash.nu` flashes one CM5 via rpiboot + rpi-imager, generating cloud-init user-data/network-config from inventory
-- `provision/playbooks/deploy.yml` installs the `px4-single-plan` .deb across the fleet over SSH
 - `provision/playbooks/health.yml` checks companion ROS/uXRCE/GPS data-path health across the fleet
 - `provision/playbooks/hailo.yml` installs runtime and driver
 
@@ -30,15 +28,6 @@ Requires `rpi-imager` >2.0 and `nu`!!
 2. Expose the CM5 eMMC: `sudo rpiboot -d mass-storage-gadget64`
 3. Flash: `cd provision && nu flash.nu <hostname> path/to/px4-companion-cm5-YYYYMMDD.img.xz`
 4. `ssh maav@<hostname>`
-
-### Updating flight code
-
-After CI publishes a new `px4-single-plan_*.deb`:
-
-```
-cd provision
-ansible-playbook playbooks/deploy.yml -e 'deb_file=/path/to/px4-single-plan_X.Y.Z_arm64.deb'
-```
 
 ## Other stuff
 

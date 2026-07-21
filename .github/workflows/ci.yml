@@ -9,7 +9,7 @@ env:
   PIOS_MANIFEST_URL: https://downloads.raspberrypi.com/os_list_imagingutility_v4.json
   XRCE_DDS_VERSION: v2.4.3
   PX4_AUTOPILOT_REPO: https://github.com/calgary-kirisame/PX4-Autopilot.git
-  PX4_AUTOPILOT_REF: uxrce-v1.16.2-fix
+  PX4_AUTOPILOT_REF: b2a64a725d5adf11c1aa39f51b9153400e1d28b6
 
 jobs:
   ros-base:
@@ -171,10 +171,8 @@ jobs:
         id: pkgs-cache
         uses: actions/cache/restore@v5
         with:
-          path: |
-            /tmp/ros-jazzy-px4-arm64.tar.gz
-            /tmp/px4-single-plan_*.deb
-          key: px4-pkgs-outputs-${{ steps.px4-ref.outputs.sha }}-${{ hashFiles('.github/workflows/ci.yml', 'repos/jazzy-pios-trixie.repos', 'scripts/build-ros.sh', 'scripts/install-build-deps.sh', 'src/px4_single_plan/**', 'scripts/package-deb.sh', 'scripts/sync-px4-msgs.sh') }}
+          path: /tmp/ros-jazzy-px4-arm64.tar.gz
+          key: px4-pkgs-outputs-${{ steps.px4-ref.outputs.sha }}-${{ hashFiles('.github/workflows/ci.yml', 'repos/jazzy-pios-trixie.repos', 'scripts/build-ros.sh', 'scripts/install-build-deps.sh', 'scripts/sync-px4-msgs.sh') }}
 
       - name: Install build dependencies
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
@@ -192,7 +190,7 @@ jobs:
       - uses: hendrikmuhs/ccache-action@v1.2
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
         with:
-          key: px4-pkgs-${{ steps.px4-ref.outputs.sha }}-${{ hashFiles('src/px4_single_plan/**', 'scripts/sync-px4-msgs.sh') }}
+          key: px4-pkgs-${{ steps.px4-ref.outputs.sha }}-${{ hashFiles('scripts/sync-px4-msgs.sh') }}
 
       - uses: actions/download-artifact@v8
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
@@ -208,14 +206,13 @@ jobs:
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
         run: scripts/sync-px4-msgs.sh "${{ env.PX4_AUTOPILOT_REPO }}" "${{ steps.px4-ref.outputs.sha }}"
 
-      - name: Build PX4 platform and mission packages
+      - name: Build PX4 platform interfaces
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           source /opt/ros/jazzy/setup.bash
           mkdir -p /px4_ws/src
           cp -r src/px4_msgs /px4_ws/src/
-          cp -r src/px4_single_plan /px4_ws/src/
           cd /px4_ws
           export PATH="/usr/lib/ccache:$PATH"
           colcon build \
@@ -228,42 +225,22 @@ jobs:
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
               -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
-          # Keep flight code out of the platform prefix that is baked into the
-          # OS image. It remains available as a separately deployable package.
-          source /opt/ros/jazzy/setup.bash
-          colcon build \
-            --packages-select px4_single_plan \
-            --merge-install \
-            --install-base /tmp/px4-single-plan-install
-
       - name: Package tarball
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
         run: tar czf /tmp/ros-jazzy-px4-arm64.tar.gz -C / opt/ros/jazzy
-
-      - name: Package .deb
-        if: steps.pkgs-cache.outputs.cache-hit != 'true'
-        run: scripts/package-deb.sh /tmp/px4-single-plan-install
 
       - name: Save outputs cache
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
-          path: |
-            /tmp/ros-jazzy-px4-arm64.tar.gz
-            /tmp/px4-single-plan_*.deb
-          key: px4-pkgs-outputs-${{ steps.px4-ref.outputs.sha }}-${{ hashFiles('.github/workflows/ci.yml', 'repos/jazzy-pios-trixie.repos', 'scripts/build-ros.sh', 'scripts/install-build-deps.sh', 'src/px4_single_plan/**', 'scripts/package-deb.sh', 'scripts/sync-px4-msgs.sh') }}
+          path: /tmp/ros-jazzy-px4-arm64.tar.gz
+          key: px4-pkgs-outputs-${{ steps.px4-ref.outputs.sha }}-${{ hashFiles('.github/workflows/ci.yml', 'repos/jazzy-pios-trixie.repos', 'scripts/build-ros.sh', 'scripts/install-build-deps.sh', 'scripts/sync-px4-msgs.sh') }}
 
       - uses: actions/upload-artifact@v7
         with:
           name: ros-jazzy-px4
           path: /tmp/ros-jazzy-px4-arm64.tar.gz
           retention-days: 7
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: px4-single-plan-deb
-          path: /tmp/px4-single-plan_*.deb
-          retention-days: 30
 
   assemble-image:
     needs: [ros-base, xrce-agent, px4-pkgs, py-debs]
