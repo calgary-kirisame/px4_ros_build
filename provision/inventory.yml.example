@@ -1,8 +1,11 @@
 all:
   vars:
-    # Cloud-init provisioning vars (used by flash.yml on localhost)
-    wifi_ssid: NameOfNetwork
-    wifi_password: password
+    # Cloud-init provisioning vars (used by flash.nu on the flashing host)
+    # Use `mode: personal` with `ssid` and `password` for a WPA-Personal network.
+    wifi:
+      mode: umich
+      identity: uniqname@umich.edu
+      password: password
     maav_password_hash: ""
     ssh_authorized_keys: [""]
     # Reusable, tagged pre-auth key from https://login.tailscale.com/admin/settings/keys

@@ -19,6 +19,70 @@ def detect-rpi-disk [] {
     }
 }
 
+def build-network-config [wifi: record] {
+    let mode = ($wifi.mode? | default "")
+    let access_points = match $mode {
+        "umich" => {
+            let configured_identity = ($wifi.identity? | default "")
+            let password = ($wifi.password? | default "")
+            if $configured_identity == "" or $password == "" {
+                error make --unspanned {msg: "wifi.identity and wifi.password are required for U-M WiFi"}
+            }
+
+            let identity = if ($configured_identity | str ends-with "@umich.edu") {
+                $configured_identity
+            } else {
+                $"($configured_identity)@umich.edu"
+            }
+            let auth = {
+                "key-management": "eap"
+                method: "peap"
+                identity: $identity
+                password: $password
+                "ca-certificate": "/etc/ssl/certs/USERTrust_RSA_Certification_Authority.pem"
+                "phase2-auth": "mschapv2"
+            }
+
+            {
+                MWireless: {auth: $auth}
+                eduroam: {auth: $auth}
+            }
+        }
+        "personal" => {
+            let ssid = ($wifi.ssid? | default "")
+            let password = ($wifi.password? | default "")
+            if $ssid == "" or $password == "" {
+                error make --unspanned {msg: "wifi.ssid and wifi.password are required for personal WiFi"}
+            }
+
+            {
+                ($ssid): {
+                    auth: {
+                        "key-management": "psk"
+                        password: $password
+                    }
+                }
+            }
+        }
+        _ => {
+            error make --unspanned {msg: "wifi.mode must be 'umich' or 'personal'"}
+        }
+    }
+
+    {
+        version: 2
+        renderer: "NetworkManager"
+        wifis: {
+            wlan0: {
+                optional: true
+                "regulatory-domain": "US"
+                "access-points": $access_points
+                dhcp4: true
+            }
+        }
+    } | to yaml
+}
+
 def main [hostname: string, image: path, --disable-verify] {
     let inv = (open ($env.FILE_PWD | path join "inventory.yml")).all.vars
     let device = (detect-rpi-disk)
@@ -52,18 +116,7 @@ runcmd:
   - [netplan, apply]
 "
 
-    let network_config = $"version: 2
-wifis:
-  wlan0:
-    optional: true
-    regulatory-domain: \"US\"
-    access-points:
-      \"($inv.wifi_ssid)\":
-        auth:
-          key-management: \"sae\"
-          password: \"($inv.wifi_password)\"
-    dhcp4: true
-"
+    let network_config = (build-network-config $inv.wifi)
 
     let user_data_file = $"/tmp/cloud-init-($hostname)-user-data"
     let network_config_file = $"/tmp/cloud-init-($hostname)-network-config"
