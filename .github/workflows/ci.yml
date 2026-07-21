@@ -9,7 +9,7 @@ env:
   PIOS_MANIFEST_URL: https://downloads.raspberrypi.com/os_list_imagingutility_v4.json
   XRCE_DDS_VERSION: v2.4.3
   PX4_AUTOPILOT_REPO: https://github.com/calgary-kirisame/PX4-Autopilot.git
-  PX4_AUTOPILOT_REF: b2a64a725d5adf11c1aa39f51b9153400e1d28b6
+  PX4_AUTOPILOT_REF: 6591986d767cd34b9b4af34ef6274c25fb266277
 
 jobs:
   ros-base:
