@@ -89,9 +89,16 @@ write_files:
     owner: 'root:root'
 "}
 
+    # Enterprise WiFi validates the RADIUS certificate before NTP is available.
+    # Seed the clock once from the flashing host so a stale image clock cannot
+    # make a newly issued certificate appear not-yet-valid on first boot.
+    let flash_epoch = (^date -u +%s | str trim | into int)
     let user_data = $"#cloud-config
 hostname: ($hostname)
 manage_etc_hosts: true
+
+bootcmd:
+  - [cloud-init-per, once, seed-flash-clock, date, -u, -s, \"@($flash_epoch)\"]
 
 users:
   - name: maav
