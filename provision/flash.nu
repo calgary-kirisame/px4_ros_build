@@ -20,52 +20,45 @@ def detect-rpi-disk [] {
 }
 
 def build-network-config [wifi: record] {
-    let mode = ($wifi.mode? | default "")
-    let access_points = match $mode {
-        "umich" => {
-            let configured_identity = ($wifi.identity? | default "")
-            let password = ($wifi.password? | default "")
-            if $configured_identity == "" or $password == "" {
-                error make --unspanned {msg: "wifi.identity and wifi.password are required for U-M WiFi"}
-            }
+    let umich = ($wifi.umich? | default {})
+    let configured_identity = ($umich.identity? | default "")
+    let umich_password = ($umich.password? | default "")
+    if $configured_identity == "" or $umich_password == "" {
+        error make --unspanned {msg: "wifi.umich.identity and wifi.umich.password are required"}
+    }
 
-            let identity = if ($configured_identity | str ends-with "@umich.edu") {
-                $configured_identity
-            } else {
-                $"($configured_identity)@umich.edu"
-            }
-            let auth = {
-                "key-management": "eap"
-                method: "peap"
-                identity: $identity
-                password: $password
-                "ca-certificate": "/etc/ssl/certs/USERTrust_RSA_Certification_Authority.pem"
-                "phase2-auth": "mschapv2"
-            }
+    let recovery = ($wifi.recovery? | default {})
+    let recovery_ssid = ($recovery.ssid? | default "")
+    let recovery_password = ($recovery.password? | default "")
+    if $recovery_ssid == "" or $recovery_password == "" {
+        error make --unspanned {msg: "wifi.recovery.ssid and wifi.recovery.password are required"}
+    }
+    if $recovery_ssid in ["MWireless" "eduroam"] {
+        error make --unspanned {msg: "wifi.recovery.ssid must differ from MWireless and eduroam"}
+    }
 
-            {
-                MWireless: {auth: $auth}
-                eduroam: {auth: $auth}
-            }
-        }
-        "personal" => {
-            let ssid = ($wifi.ssid? | default "")
-            let password = ($wifi.password? | default "")
-            if $ssid == "" or $password == "" {
-                error make --unspanned {msg: "wifi.ssid and wifi.password are required for personal WiFi"}
-            }
+    let identity = if ($configured_identity | str ends-with "@umich.edu") {
+        $configured_identity
+    } else {
+        $"($configured_identity)@umich.edu"
+    }
+    let umich_auth = {
+        "key-management": "eap"
+        method: "peap"
+        identity: $identity
+        password: $umich_password
+        "ca-certificate": "/etc/ssl/certs/USERTrust_RSA_Certification_Authority.pem"
+        "phase2-auth": "mschapv2"
+    }
 
-            {
-                ($ssid): {
-                    auth: {
-                        "key-management": "psk"
-                        password: $password
-                    }
-                }
+    let access_points = {
+        MWireless: {auth: $umich_auth}
+        eduroam: {auth: $umich_auth}
+        ($recovery_ssid): {
+            auth: {
+                "key-management": "sae"
+                password: $recovery_password
             }
-        }
-        _ => {
-            error make --unspanned {msg: "wifi.mode must be 'umich' or 'personal'"}
         }
     }
 

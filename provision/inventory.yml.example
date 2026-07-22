@@ -1,11 +1,14 @@
 all:
   vars:
     # Cloud-init provisioning vars (used by flash.nu on the flashing host)
-    # Use `mode: personal` with `ssid` and `password` for a WPA-Personal network.
+    # All three profiles are provisioned: MWireless, eduroam, and the SAE recovery hotspot.
     wifi:
-      mode: umich
-      identity: uniqname@umich.edu
-      password: password
+      umich:
+        identity: uniqname@umich.edu
+        password: password
+      recovery:
+        ssid: Recover.Me-XXXX
+        password: password
     maav_password_hash: ""
     ssh_authorized_keys: [""]
     # Reusable, tagged pre-auth key from https://login.tailscale.com/admin/settings/keys
