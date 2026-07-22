@@ -44,14 +44,17 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
   set -euo pipefail
   apt-get update
   apt-get install -y --no-install-recommends \
-    ca-certificates curl can-utils \
+    avahi-daemon ca-certificates curl can-utils dkms libconsole-bridge1.0 \
+    libnss-mdns linux-headers-rpi-2712 \
     python3-argcomplete python3-catkin-pkg python3-dbus python3-empy \
     python3-importlib-metadata python3-lark python3-netifaces \
     python3-numpy python3-opencv python3-osrf-pycommon \
-    python3-packaging python3-psutil python3-pyaudio \
-    python3-serial python3-yaml \
+    python3-packaging python3-picamera2 python3-pip python3-psutil \
+    python3-pyaudio python3-serial python3-yaml rsync \
     libopencv-dev libspdlog-dev libtinyxml2-dev libyaml-cpp-dev
   apt-get install -y --no-install-recommends /var/tmp/py-debs/*.deb
+  pip3 install --break-system-packages --no-cache-dir \
+    fastcrc lxml pymavlink
   rm -rf /var/tmp/py-debs
   apt-get clean
 '
@@ -72,6 +75,7 @@ systemd-nspawn --pipe -D "$MNT" passwd -l pi
 systemd-nspawn --pipe -D "$MNT" raspi-config nonint do_change_locale en_US.UTF-8
 
 systemd-nspawn --pipe -D "$MNT" systemctl enable \
+  avahi-daemon.service \
   ssh \
   xrce-dds-agent.service \
   tailscale-authenticate.service \
