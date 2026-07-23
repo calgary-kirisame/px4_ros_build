@@ -32,6 +32,10 @@ tar xzf "$ARTIFACT_DIR/xrce-dds-agent-arm64.tar.gz" -C "$MNT"
 
 mkdir -p "$MNT/var/tmp/py-debs"
 cp "$ARTIFACT_DIR/py-debs/"*.deb "$MNT/var/tmp/py-debs/"
+install -m 0755 "$SCRIPT_DIR/install-hailo-image.sh" \
+  "$MNT/var/tmp/install-hailo-image.sh"
+install -m 0755 "$SCRIPT_DIR/hailo-pcie-driver.postinst" \
+  "$MNT/var/tmp/hailo-pcie-driver.postinst"
 
 cp -r "$REPO_DIR/overlay/etc/"* "$MNT/etc/"
 echo 'export PATH="/opt/xrce-dds/bin:$PATH"' > "$MNT/etc/profile.d/xrce-dds.sh"
@@ -42,10 +46,12 @@ systemd-nspawn --pipe -D "$MNT" ldconfig
 
 systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
   set -euo pipefail
+  KERNEL_META_VERSION=$(dpkg-query -W -f="\${Version}" linux-image-rpi-2712)
   apt-get update
   apt-get install -y --no-install-recommends \
-    avahi-daemon ca-certificates curl can-utils dkms libconsole-bridge1.0 \
-    libnss-mdns linux-headers-rpi-2712 \
+    avahi-daemon build-essential ca-certificates curl can-utils dkms \
+    libconsole-bridge1.0 libnss-mdns \
+    "linux-headers-rpi-2712=${KERNEL_META_VERSION}" \
     python3-argcomplete python3-catkin-pkg python3-dbus python3-empy \
     python3-importlib-metadata python3-lark python3-netifaces \
     python3-numpy python3-opencv python3-osrf-pycommon \
@@ -58,6 +64,14 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
   rm -rf /var/tmp/py-debs
   apt-get clean
 '
+
+systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf \
+  /var/tmp/install-hailo-image.sh
+cp "$MNT/var/tmp/hailo-build-metadata.json" \
+  /tmp/hailo-build-metadata.json
+rm "$MNT/var/tmp/install-hailo-image.sh" \
+  "$MNT/var/tmp/hailo-pcie-driver.postinst" \
+  "$MNT/var/tmp/hailo-build-metadata.json"
 
 systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
   set -euo pipefail
@@ -101,6 +115,10 @@ dtparam=ant2
 
 # Pixhawk telemetry UART (RTS/CTS)
 dtoverlay=uart0-pi5,ctsrts
+
+# Hailo-8 on the external PCIe x1 link.
+dtparam=pciex1
+dtparam=pciex1_gen=3
 
 # CSI cameras: CM carriers don't auto-detect, so name each sensor's port.
 # Mirrors the fleet default in playbooks/camera.yml (verified there via rpicam-hello).

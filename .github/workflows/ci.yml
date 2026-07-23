@@ -298,5 +298,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: px4-companion-image
-          path: /tmp/px4-companion-cm5-*.img.xz
+          path: |
+            /tmp/px4-companion-cm5-*.img.xz
+            /tmp/hailo-build-metadata.json
           retention-days: 30

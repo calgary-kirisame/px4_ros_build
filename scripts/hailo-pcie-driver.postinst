@@ -1,0 +1,65 @@
+#!/bin/bash
+set -euo pipefail
+
+SOURCE_ROOT=/usr/src/hailort-pcie-driver
+PCIE_SOURCE="$SOURCE_ROOT/linux/pcie"
+VERSION_HEADER="$SOURCE_ROOT/common/hailo_ioctl_common.h"
+MODULE_NAME=hailo_pci
+
+read_version_component() {
+    local macro=$1
+    awk -v macro="$macro" \
+        '$1 == "#define" && $2 == macro { print $3; exit }' \
+        "$VERSION_HEADER"
+}
+
+install_driver() {
+    local target_kernel=$1
+    local version_major version_minor version_revision driver_version
+    local dkms_source firmware
+
+    version_major=$(read_version_component HAILO_DRV_VER_MAJOR)
+    version_minor=$(read_version_component HAILO_DRV_VER_MINOR)
+    version_revision=$(read_version_component HAILO_DRV_VER_REVISION)
+    driver_version="${version_major}.${version_minor}.${version_revision}"
+
+    [[ "$driver_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+    [[ "$target_kernel" =~ ^[A-Za-z0-9.+_~-]+$ ]]
+    test -d "/lib/modules/$target_kernel/build"
+
+    firmware="/lib/firmware/hailo/hailo8_fw.${driver_version}.bin"
+    test -f "$firmware"
+    ln -sfn "$(basename "$firmware")" /lib/firmware/hailo/hailo8_fw.bin
+
+    if [[ -n "$(
+        dkms status -m "$MODULE_NAME" -v "$driver_version" 2>/dev/null
+    )" ]]; then
+        dkms remove -m "$MODULE_NAME" -v "$driver_version" --all
+    fi
+
+    dkms_source="/usr/src/${MODULE_NAME}-${driver_version}"
+    rm -rf -- "$dkms_source"
+    install -d "$dkms_source/linux"
+    cp -a "$PCIE_SOURCE" "$dkms_source/linux/pcie"
+    cp -a "$SOURCE_ROOT/common" "$dkms_source/common"
+    cp -a "$SOURCE_ROOT/linux/vdma" "$dkms_source/linux/vdma"
+    cp -a "$SOURCE_ROOT/linux/utils" "$dkms_source/linux/utils"
+    sed "s/@PCIE_DRIVER_VERSION@/${driver_version}/g" \
+        "$PCIE_SOURCE/dkms.conf.in" > "$dkms_source/dkms.conf"
+
+    dkms add -m "$MODULE_NAME" -v "$driver_version"
+    dkms build -m "$MODULE_NAME" -v "$driver_version" -k "$target_kernel"
+    dkms install -m "$MODULE_NAME" -v "$driver_version" \
+        -k "$target_kernel" --force
+    depmod -a "$target_kernel"
+
+    if [[ -z "${MAAV_TARGET_KERNEL:-}" && "$target_kernel" == "$(uname -r)" ]]; then
+        modprobe "$MODULE_NAME"
+    fi
+}
+
+case "${1:-configure}" in
+    configure | reconfigure)
+        install_driver "${MAAV_TARGET_KERNEL:-$(uname -r)}"
+        ;;
+esac
