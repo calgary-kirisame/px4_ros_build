@@ -146,7 +146,10 @@ modprobe_resolution=$(
 [[ "$modprobe_resolution" == *"$module_path"* ]] ||
     fail "modprobe resolved an unexpected module: $modprobe_resolution"
 
-firmware_path="/lib/firmware/hailo/hailo8_fw.${driver_module_version}.bin"
+firmware_path=$(
+    readlink -f \
+        "/lib/firmware/hailo/hailo8_fw.${driver_module_version}.bin"
+)
 test -f "$firmware_path" ||
     fail "firmware is missing: $firmware_path"
 firmware_link=$(readlink -f /lib/firmware/hailo/hailo8_fw.bin)
