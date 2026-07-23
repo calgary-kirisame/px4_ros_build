@@ -6,6 +6,11 @@ POSTINST="$SCRIPT_DIR/hailo-pcie-driver.postinst"
 METADATA=/var/tmp/hailo-build-metadata.json
 IMAGE_METADATA=/etc/maav/hailo-build-metadata.json
 
+fail() {
+    printf 'Hailo image validation failed: %s\n' "$*" >&2
+    exit 1
+}
+
 candidate_version() {
     local package=$1
     apt-cache policy "$package" |
@@ -98,43 +103,71 @@ installed_driver_version=$(
     dpkg-query -W -f='${Version}' hailort-pcie-driver
 )
 python_version=$(dpkg-query -W -f='${Version}' python3-hailort)
-[[ "$runtime_version" == "$runtime_candidate" ]]
-[[ "$installed_driver_version" == "$modified_driver_version" ]]
-[[ "$python_version" == "$python_candidate" ]]
+[[ "$runtime_version" == "$runtime_candidate" ]] ||
+    fail "hailort package is $runtime_version, expected $runtime_candidate"
+[[ "$installed_driver_version" == "$modified_driver_version" ]] ||
+    fail "driver package is $installed_driver_version, expected $modified_driver_version"
+[[ "$python_version" == "$python_candidate" ]] ||
+    fail "Python package is $python_version, expected $python_candidate"
 
 driver_module_version=$(
     modinfo -k "$target_kernel" -F version hailo_pci
-)
-[[ "$driver_module_version" == "$driver_candidate" ]]
+) || fail "modinfo could not find hailo_pci for $target_kernel"
+[[ "$driver_module_version" == "$driver_candidate" ]] ||
+    fail "module is $driver_module_version, expected $driver_candidate"
 dkms_status=$(
     dkms status -m hailo_pci -v "$driver_module_version" -k "$target_kernel"
-)
-[[ "$dkms_status" == *': installed'* ]]
+) || fail "DKMS could not report hailo_pci for $target_kernel"
+[[ "$dkms_status" == *': installed'* ]] ||
+    fail "unexpected DKMS status: $dkms_status"
 
-module_path=$(modinfo -k "$target_kernel" -F filename hailo_pci)
-test -f "$module_path"
-module_vermagic=$(modinfo -k "$target_kernel" -F vermagic hailo_pci)
-[[ "$module_vermagic" == "$target_kernel "* ]]
-[[ "$module_vermagic" == *' aarch64' ]]
+module_path=$(
+    modinfo -k "$target_kernel" -F filename hailo_pci
+) || fail "modinfo did not report a module path"
+test -f "$module_path" ||
+    fail "module path does not exist: $module_path"
+module_vermagic=$(
+    modinfo -k "$target_kernel" -F vermagic hailo_pci
+) || fail "modinfo did not report vermagic"
+[[ "$module_vermagic" == "$target_kernel "* ]] ||
+    fail "vermagic does not target $target_kernel: $module_vermagic"
+[[ "$module_vermagic" == *' aarch64' ]] ||
+    fail "vermagic is not AArch64: $module_vermagic"
 hailo8_alias=$(
     modinfo -k "$target_kernel" -F alias hailo_pci |
         grep -i 'v00001e60d00002864' |
         head -n 1
-)
-test -n "$hailo8_alias"
+) || fail "module does not advertise the Hailo-8 PCI ID"
+test -n "$hailo8_alias" ||
+    fail "module does not advertise the Hailo-8 PCI ID"
 modprobe_resolution=$(
     modprobe --set-version "$target_kernel" --show-depends hailo_pci
-)
-[[ "$modprobe_resolution" == *"$module_path"* ]]
+) || fail "modprobe could not resolve hailo_pci for $target_kernel"
+[[ "$modprobe_resolution" == *"$module_path"* ]] ||
+    fail "modprobe resolved an unexpected module: $modprobe_resolution"
 
 firmware_path="/lib/firmware/hailo/hailo8_fw.${driver_module_version}.bin"
-test -f "$firmware_path"
-[[ $(readlink -f /lib/firmware/hailo/hailo8_fw.bin) == "$firmware_path" ]]
-test -x /usr/bin/hailortcli
-test -n "$(
+test -f "$firmware_path" ||
+    fail "firmware is missing: $firmware_path"
+firmware_link=$(readlink -f /lib/firmware/hailo/hailo8_fw.bin)
+[[ "$firmware_link" == "$firmware_path" ]] ||
+    fail "firmware link resolves to $firmware_link"
+test -x /usr/bin/hailortcli ||
+    fail "hailortcli is missing"
+python_binding=$(
     find /usr/lib/python3/dist-packages/hailo_platform/pyhailort \
         -maxdepth 1 -name '*aarch64-linux-gnu.so' -print -quit
-)"
+)
+test -n "$python_binding" ||
+    fail "AArch64 Python bindings are missing"
+
+printf '%s\n' \
+    "Hailo kernel: $target_kernel" \
+    "Hailo DKMS: $dkms_status" \
+    "Hailo module: $module_path" \
+    "Hailo vermagic: $module_vermagic" \
+    "Hailo firmware: $firmware_link" \
+    "Hailo Python binding: $python_binding"
 
 module_sha256=$(sha256sum "$module_path" | awk '{ print $1 }')
 install -d "$(dirname "$IMAGE_METADATA")"
