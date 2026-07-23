@@ -36,10 +36,10 @@
 
     # Fail-fast: prove the bus came up and the device is alive, don't assume.
     - name: Assert Hailo enumerated on the PCIe bus
-      ansible.builtin.command: "lspci -d 1e60:"
+      ansible.builtin.command: "lspci -nn -d 1e60:"
       register: hailo_lspci
       changed_when: false
-      failed_when: "'1e60' not in hailo_lspci.stdout"
+      failed_when: hailo_lspci.rc != 0 or '1e60:' not in hailo_lspci.stdout
 
     - name: Assert Hailo firmware responds
       ansible.builtin.command: hailortcli fw-control identify
