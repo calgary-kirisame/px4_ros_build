@@ -10,6 +10,9 @@ env:
   XRCE_DDS_VERSION: v2.4.3
   PX4_AUTOPILOT_REPO: https://github.com/calgary-kirisame/PX4-Autopilot.git
   PX4_AUTOPILOT_REF: 6591986d767cd34b9b4af34ef6274c25fb266277
+  # Detection wire for the mission engine. The tip of the distro branch, pinned.
+  VISION_MSGS_REPO: https://github.com/ros-perception/vision_msgs.git
+  VISION_MSGS_REF: adbf56af9f77e3c8ab2552e25dc99e4a8a77fb27
 
 jobs:
   ros-base:
@@ -206,17 +209,27 @@ jobs:
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
         run: scripts/sync-px4-msgs.sh "${{ env.PX4_AUTOPILOT_REPO }}" "${{ steps.px4-ref.outputs.sha }}"
 
-      - name: Build PX4 platform interfaces
+      - name: Fetch vision_msgs
+        if: steps.pkgs-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none "${VISION_MSGS_REPO}" /tmp/vision_msgs
+          git -C /tmp/vision_msgs checkout --detach "${VISION_MSGS_REF}"
+
+      - name: Build platform interfaces
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           source /opt/ros/jazzy/setup.bash
           mkdir -p /px4_ws/src
           cp -r src/px4_msgs /px4_ws/src/
+          # vision_msgs carries Detection2DArray, the wire between the tag
+          # detector and the mission engine. The rviz plugins stay out.
+          cp -r /tmp/vision_msgs/vision_msgs /px4_ws/src/
           cd /px4_ws
           export PATH="/usr/lib/ccache:$PATH"
           colcon build \
-            --packages-select px4_msgs \
+            --packages-select px4_msgs vision_msgs \
             --merge-install \
             --install-base /opt/ros/jazzy \
             --cmake-args \
