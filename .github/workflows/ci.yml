@@ -9,7 +9,7 @@ env:
   PIOS_MANIFEST_URL: https://downloads.raspberrypi.com/os_list_imagingutility_v4.json
   XRCE_DDS_VERSION: v2.4.3
   PX4_AUTOPILOT_REPO: https://github.com/calgary-kirisame/PX4-Autopilot.git
-  PX4_AUTOPILOT_REF: 6591986d767cd34b9b4af34ef6274c25fb266277
+  PX4_AUTOPILOT_REF: 88a57ce3f216f3f24fa18a658cb563c34d413ac8
   # Detection wire for the mission engine. The tip of the distro branch, pinned.
   VISION_MSGS_REPO: https://github.com/ros-perception/vision_msgs.git
   VISION_MSGS_REF: adbf56af9f77e3c8ab2552e25dc99e4a8a77fb27
