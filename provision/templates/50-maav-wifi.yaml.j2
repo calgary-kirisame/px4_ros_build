@@ -1,0 +1,21 @@
+network:
+  version: 2
+  renderer: NetworkManager
+  wifis:
+    wlan0:
+      optional: true
+      regulatory-domain: US
+      access-points:
+        MWireless:
+          auth:
+            key-management: eap
+            method: peap
+            identity: {{ wifi.umich.identity | to_json }}
+            password: {{ wifi.umich.password | to_json }}
+            ca-certificate: /etc/ssl/certs/USERTrust_RSA_Certification_Authority.pem
+            phase2-auth: mschapv2
+        {{ wifi.hotspot.ssid | to_json }}:
+          auth:
+            key-management: sae
+            password: {{ wifi.hotspot.password | to_json }}
+      dhcp4: true

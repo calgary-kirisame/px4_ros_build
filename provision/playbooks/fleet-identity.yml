@@ -1,0 +1,45 @@
+---
+- name: Configure qualifier PX4 DDS identities
+  hosts: qualifier_fleet
+  become: true
+
+  vars:
+    ros_setup: /opt/ros/jazzy/setup.bash
+    identity_script: /usr/local/lib/maav/set-px4-fleet-identity.py
+
+  tasks:
+    - name: Check inventory namespace and peer mapping
+      ansible.builtin.assert:
+        that:
+          - vehicle_namespace == 'px4_' ~ (fleet_index | string)
+          - fleet_ip in fleet_dds.peers
+          - fleet_dds.domain_id == 0
+        fail_msg: "Qualifier inventory DDS identity is inconsistent"
+
+    - name: Install the PX4 DDS identity tool
+      ansible.builtin.copy:
+        src: ../files/set_px4_fleet_identity.py
+        dest: "{{ identity_script }}"
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Set and read back the PX4 DDS parameters
+      ansible.builtin.shell: >-
+        source {{ ros_setup }} &&
+        python3 {{ identity_script }}
+        --index {{ fleet_index }}
+        --domain {{ fleet_dds.domain_id }}
+      args:
+        executable: /bin/bash
+      environment:
+        ROS_DOMAIN_ID: "{{ fleet_dds.domain_id | string }}"
+        RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+        CYCLONEDDS_URI: file:///etc/cyclonedds/maav-fleet.xml
+      become_user: maav
+      register: fleet_identity
+      changed_when: "'CHANGED:' in fleet_identity.stdout"
+
+    - name: Report PX4 DDS identity
+      ansible.builtin.debug:
+        var: fleet_identity.stdout_lines

@@ -1,2 +1,6 @@
 # Per-deployment credentials and host overrides.
 provision/inventory.yml
+
+# macOS filesystem litter
+.DS_Store
+._*

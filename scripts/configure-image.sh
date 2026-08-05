@@ -37,7 +37,7 @@ install -m 0755 "$SCRIPT_DIR/install-hailo-image.sh" \
 install -m 0755 "$SCRIPT_DIR/hailo-pcie-driver.postinst" \
   "$MNT/var/tmp/hailo-pcie-driver.postinst"
 
-cp -r "$REPO_DIR/overlay/etc/"* "$MNT/etc/"
+cp -a "$REPO_DIR/overlay/." "$MNT/"
 echo 'export PATH="/opt/xrce-dds/bin:$PATH"' > "$MNT/etc/profile.d/xrce-dds.sh"
 
 systemd-nspawn --pipe -D "$MNT" ldconfig
@@ -49,7 +49,7 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
   KERNEL_META_VERSION=$(dpkg-query -W -f="\${Version}" linux-image-rpi-2712)
   apt-get update
   apt-get install -y --no-install-recommends \
-    avahi-daemon build-essential ca-certificates curl can-utils dkms ffmpeg \
+    avahi-daemon build-essential ca-certificates curl can-utils dkms dnsmasq ffmpeg \
     git libconsole-bridge1.0 libnss-mdns \
     "linux-headers-rpi-2712=${KERNEL_META_VERSION}" \
     python3-argcomplete python3-av python3-catkin-pkg python3-dbus python3-empy \
@@ -90,10 +90,15 @@ systemd-nspawn --pipe -D "$MNT" raspi-config nonint do_change_locale en_US.UTF-8
 
 systemd-nspawn --pipe -D "$MNT" systemctl enable \
   avahi-daemon.service \
+  maav-fleet-network.service \
   ssh \
   xrce-dds-agent.service \
   tailscale-authenticate.service \
   systemd-timesyncd.service
+
+# The fleet DHCP unit invokes dnsmasq with its own configuration. Prevent the
+# package unit from binding other interfaces or starting a second process.
+systemd-nspawn --pipe -D "$MNT" systemctl mask dnsmasq.service
 
 # Pi OS ships NetworkManager.state with WirelessEnabled=false, causing NM to
 # rfkill-block wifi on every boot regardless of kernel/systemd-rfkill state.

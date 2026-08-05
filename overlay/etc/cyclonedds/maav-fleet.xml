@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain Id="0">
+    <General>
+      <Interfaces>
+        <NetworkInterface name="wlan0" presence_required="false"
+                          multicast="false" />
+        <NetworkInterface name="lo" presence_required="true"
+                          multicast="false" />
+      </Interfaces>
+      <AllowMulticast>false</AllowMulticast>
+      <DontRoute>true</DontRoute>
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <MaxAutoParticipantIndex>15</MaxAutoParticipantIndex>
+      <Peers>
+        <Peer Address="127.0.0.1" />
+        <Peer Address="10.77.0.1" />
+        <Peer Address="10.77.0.11" />
+        <Peer Address="10.77.0.12" />
+        <Peer Address="10.77.0.13" />
+        <Peer Address="10.77.0.14" />
+      </Peers>
+    </Discovery>
+  </Domain>
+</CycloneDDS>

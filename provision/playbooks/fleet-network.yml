@@ -1,0 +1,188 @@
+---
+- name: Provision qualifier fleet Wi-Fi roles
+  hosts: qualifier_fleet
+  become: true
+
+  vars:
+    fleet_network_script: /usr/local/sbin/maav-fleet-network
+
+  pre_tasks:
+    - name: Check the fleet-wide network settings
+      ansible.builtin.assert:
+        that:
+          - wifi.field.ssid | length > 0
+          - wifi.field.ssid | length <= 32
+          - wifi.field.password | length >= 8
+          - wifi.field.password | length <= 63
+          - wifi.field.channel | int >= 1
+          - wifi.field.channel | int <= 11
+          - wifi.umich.identity | length > 0
+          - wifi.umich.password | length > 0
+          - wifi.hotspot.ssid | length > 0
+          - wifi.hotspot.ssid | length <= 32
+          - wifi.hotspot.password | length >= 8
+          - wifi.hotspot.password | length <= 63
+          - wifi.field.ssid != 'MWireless'
+          - wifi.field.ssid != wifi.hotspot.ssid
+          - wifi.hotspot.ssid != 'MWireless'
+          - wifi.field.dhcp.start != wifi.field.dhcp.end
+          - wifi.field.dhcp.static_leases is sequence
+        fail_msg: "Fleet Wi-Fi inventory settings are invalid"
+      run_once: true
+
+    - name: Check the per-drone role and address
+      ansible.builtin.assert:
+        that:
+          - fleet_role in ['master', 'client']
+          - fleet_ip in fleet_dds.peers
+          - vehicle_namespace == 'px4_' ~ (fleet_index | string)
+          - "'\\n' not in fleet_ip"
+          - "'\\n' not in wifi.field.ssid"
+          - "'\\n' not in wifi.field.password"
+          - "'\\n' not in wifi.umich.identity"
+          - "'\\n' not in wifi.umich.password"
+          - "'\\n' not in wifi.hotspot.ssid"
+          - "'\\n' not in wifi.hotspot.password"
+          - "'\\r' not in fleet_ip"
+          - "'\\r' not in wifi.field.ssid"
+          - "'\\r' not in wifi.field.password"
+          - "'\\r' not in wifi.umich.identity"
+          - "'\\r' not in wifi.umich.password"
+          - "'\\r' not in wifi.hotspot.ssid"
+          - "'\\r' not in wifi.hotspot.password"
+        fail_msg: "Fleet role or address is invalid for {{ inventory_hostname }}"
+
+    - name: Check operator-device static leases
+      ansible.builtin.assert:
+        that:
+          - item.mac is match('^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
+          - item.ip not in fleet_dds.peers
+          - item.hostname | length > 0
+          - "'\\n' not in item.hostname"
+          - "'\\r' not in item.hostname"
+        fail_msg: "Invalid operator-device lease for {{ item.hostname | default(item.mac | default('unknown')) }}"
+      loop: "{{ wifi.field.dhcp.static_leases }}"
+      run_once: true
+
+    - name: Check that the fleet has one master
+      ansible.builtin.assert:
+        that:
+          - >-
+            groups['qualifier_fleet']
+            | map('extract', hostvars, 'fleet_role')
+            | select('equalto', 'master')
+            | list
+            | length == 1
+        fail_msg: "qualifier_fleet must contain one master role"
+      run_once: true
+
+  tasks:
+    - name: Install the DHCP server
+      ansible.builtin.apt:
+        name: dnsmasq
+        state: present
+        update_cache: false
+
+    - name: Disable the package dnsmasq service
+      ansible.builtin.systemd_service:
+        name: dnsmasq.service
+        enabled: false
+        masked: true
+        state: stopped
+
+    - name: Install the fleet network directory
+      ansible.builtin.file:
+        path: /etc/maav
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install the fleet network controller
+      ansible.builtin.copy:
+        src: ../../overlay/usr/local/sbin/maav-fleet-network
+        dest: "{{ fleet_network_script }}"
+        owner: root
+        group: root
+        mode: "0755"
+      notify: Restart fleet network
+
+    - name: Install the fleet network units
+      ansible.builtin.copy:
+        src: "../../overlay/etc/systemd/system/{{ item }}"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - maav-fleet-network.service
+        - maav-fleet-dhcp.service
+      notify:
+        - Reload systemd
+        - Restart fleet network
+
+    - name: Install the durable development Wi-Fi source
+      ansible.builtin.template:
+        src: ../templates/50-maav-wifi.yaml.j2
+        dest: /usr/lib/netplan/50-maav-wifi.yaml
+        owner: root
+        group: root
+        mode: "0600"
+      notify:
+        - Apply netplan
+        - Restart fleet network
+
+    - name: Install the per-drone fleet network configuration
+      ansible.builtin.template:
+        src: ../templates/fleet-network.conf.j2
+        dest: /etc/maav/fleet-network.conf
+        owner: root
+        group: root
+        mode: "0600"
+      notify: Restart fleet network
+
+    - name: Install the per-drone fleet role
+      ansible.builtin.template:
+        src: ../templates/fleet-role.j2
+        dest: /etc/maav/fleet-role
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart fleet network
+
+    - name: Install the fleet DHCP configuration
+      ansible.builtin.template:
+        src: ../templates/dnsmasq-fleet.conf.j2
+        dest: /etc/maav/dnsmasq-fleet.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart fleet network
+
+    - name: Run pending configuration handlers
+      ansible.builtin.meta: flush_handlers
+
+    - name: Enable the fleet network controller
+      ansible.builtin.systemd_service:
+        name: maav-fleet-network.service
+        enabled: true
+        state: started
+
+    - name: Validate the installed fleet network configuration
+      ansible.builtin.command: "{{ fleet_network_script }} check"
+      changed_when: false
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: Apply netplan
+      ansible.builtin.command: netplan apply
+      changed_when: true
+
+    - name: Restart fleet network
+      ansible.builtin.systemd_service:
+        name: maav-fleet-network.service
+        state: restarted
+        daemon_reload: true

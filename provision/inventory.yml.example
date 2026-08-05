@@ -1,19 +1,44 @@
 all:
   vars:
-    # Cloud-init provisioning vars (used by flash.nu on the flashing host)
-    # All three profiles are provisioned: MWireless, eduroam, and the SAE recovery hotspot.
+    # Cloud-init provisioning vars (used by flash.nu on the flashing host).
+    # MWireless and the operator hotspot use DHCP for development access.
     wifi:
       umich:
         identity: uniqname@umich.edu
         password: password
-      recovery:
+      hotspot:
         ssid: Recover.Me-XXXX
-        password: password
+        password: change-this-hotspot-password
+      field:
+        ssid: MAAV-Fleet
+        password: change-this-field-password
+        channel: 6
+        dhcp:
+          start: 10.77.0.100
+          end: 10.77.0.199
+          lease_time: 12h
+          # These leases are for operator devices. Drones use fleet_ip.
+          static_leases:
+            - mac: "02:00:00:00:00:01"
+              ip: 10.77.0.50
+              hostname: operator-laptop
     maav_password_hash: ""
     ssh_authorized_keys: [""]
     # Reusable, tagged pre-auth key from https://login.tailscale.com/admin/settings/keys
     # Leave empty to skip Tailscale authentication at flash time.
     tailscale_authkey: ""
+    # Fleet DDS uses only wlan0 and these unicast discovery peers. Each address
+    # belongs to a drone and remains fixed when the master role moves.
+    fleet_dds:
+      domain_id: 0
+      interface: wlan0
+      subnet: 10.77.0.0/24
+      peers:
+        - 10.77.0.1
+        - 10.77.0.11
+        - 10.77.0.12
+        - 10.77.0.13
+        - 10.77.0.14
   children:
     drones:
       hosts:
@@ -27,3 +52,33 @@ all:
         ansible_user: maav
         # Tailscale MagicDNS resolves hostnames automatically.
         # If not enabled, add per-host ansible_host overrides.
+    qualifier_fleet:
+      hosts:
+        drone0:
+          fleet_index: 0
+          vehicle_namespace: px4_0
+          fleet_ip: 10.77.0.1
+          fleet_role: master
+        drone1:
+          fleet_index: 1
+          vehicle_namespace: px4_1
+          fleet_ip: 10.77.0.11
+          fleet_role: client
+        drone2:
+          fleet_index: 2
+          vehicle_namespace: px4_2
+          fleet_ip: 10.77.0.12
+          fleet_role: client
+        drone3:
+          fleet_index: 3
+          vehicle_namespace: px4_3
+          fleet_ip: 10.77.0.13
+          fleet_role: client
+        # No DW1000 fitted, so this airframe cannot UWB-range. To swap any
+        # airframe for another, apply the replaced drone's fleet_index and
+        # namespace with the fleet-identity playbook; fleet IPs never change.
+        drone4:
+          fleet_index: 4
+          vehicle_namespace: px4_4
+          fleet_ip: 10.77.0.14
+          fleet_role: client

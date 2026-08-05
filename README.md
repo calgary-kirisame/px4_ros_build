@@ -18,7 +18,15 @@ Follow `How 2 flash` if you haven't flashed yet. Otherwise if the drone is acces
 
 - `provision/inventory.yml` fleet hosts and per-deployment vars (WiFi etc.)
 - `provision/flash.nu` flashes one CM5 via rpiboot + rpi-imager, generating cloud-init user-data/network-config from inventory
+- `flash.nu` also installs the generated WiFi definition at
+  `/usr/lib/netplan/50-maav-wifi.yaml` with mode 0600. Raspberry Pi OS may
+  rebuild or remove NetworkManager-owned files under `/etc/netplan`; the
+  `/usr/lib/netplan` copy is the durable source of truth.
 - `provision/playbooks/health.yml` checks companion ROS/uXRCE/GPS data-path health across the fleet
+- `provision/playbooks/fleet-network.yml` applies the role flag, fixed fleet
+  address, field AP settings, and operator-device DHCP configuration
+- `provision/playbooks/wifi-dev-reconnect.yml` asks connected clients to select
+  the highest-priority visible development SSID
 - `provision/playbooks/hailo.yml` repairs and verifies the Hailo runtime,
   driver, PCIe link, and firmware
 

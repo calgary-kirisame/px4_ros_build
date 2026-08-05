@@ -1,0 +1,337 @@
+#!/bin/bash
+set -euo pipefail
+
+readonly ONBOARD_INTERFACE="wlan0"
+readonly AP_PROFILE="maav-field-ap"
+readonly CLIENT_PROFILE="maav-field-client"
+readonly CONFIG_FILE="${MAAV_FLEET_CONFIG_FILE:-/etc/maav/fleet-network.conf}"
+readonly ROLE_FILE="${MAAV_FLEET_ROLE_FILE:-/etc/maav/fleet-role}"
+
+declare -A CONFIG=()
+ROLE=""
+
+log() {
+    printf 'maav-fleet-network: %s\n' "$*" >&2
+}
+
+read_config() {
+    local key
+    local line
+    local value
+
+    [[ -r "$CONFIG_FILE" ]] || {
+        log "cannot read $CONFIG_FILE"
+        return 1
+    }
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -z "$line" || "$line" == \#* ]] && continue
+        [[ "$line" == *=* ]] || {
+            log "invalid line in $CONFIG_FILE"
+            return 1
+        }
+        key="${line%%=*}"
+        value="${line#*=}"
+        [[ "$key" =~ ^[A-Z][A-Z0-9_]*$ ]] || {
+            log "invalid key in $CONFIG_FILE: $key"
+            return 1
+        }
+        [[ ! -v "CONFIG[$key]" ]] || {
+            log "duplicate key in $CONFIG_FILE: $key"
+            return 1
+        }
+        CONFIG["$key"]="$value"
+    done <"$CONFIG_FILE"
+}
+
+require_value() {
+    local key="$1"
+
+    [[ -n "${CONFIG[$key]:-}" ]] || {
+        log "$key is required in $CONFIG_FILE"
+        return 1
+    }
+}
+
+valid_ipv4() {
+    local address="$1"
+    local octet
+    local -a octets
+
+    [[ "$address" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+    IFS=. read -r -a octets <<<"$address"
+    for octet in "${octets[@]}"; do
+        ((10#$octet >= 0 && 10#$octet <= 255)) || return 1
+    done
+}
+
+read_role() {
+    local role
+
+    [[ -r "$ROLE_FILE" ]] || {
+        log "cannot read $ROLE_FILE"
+        return 1
+    }
+    role="$(<"$ROLE_FILE")"
+    case "$role" in
+        master | client)
+            printf '%s\n' "$role"
+            ;;
+        *)
+            log "$ROLE_FILE must contain master or client"
+            return 1
+            ;;
+    esac
+}
+
+validate_config() {
+    local key
+
+    read_config
+    for key in FIELD_SSID FIELD_PSK FIELD_CHANNEL FLEET_IP DEV_IDENTITY \
+        DEV_PASSWORD DEV_CA_CERTIFICATE HOTSPOT_SSID HOTSPOT_PSK; do
+        require_value "$key"
+    done
+    ROLE="$(read_role)"
+
+    ((${#CONFIG[FIELD_SSID]} <= 32)) || {
+        log "FIELD_SSID must be at most 32 characters"
+        return 1
+    }
+    ((${#CONFIG[FIELD_PSK]} >= 8 && ${#CONFIG[FIELD_PSK]} <= 63)) || {
+        log "FIELD_PSK must contain 8 to 63 characters"
+        return 1
+    }
+    ((${#CONFIG[HOTSPOT_PSK]} >= 8 && ${#CONFIG[HOTSPOT_PSK]} <= 63)) || {
+        log "HOTSPOT_PSK must contain 8 to 63 characters"
+        return 1
+    }
+    [[ "${CONFIG[FIELD_CHANNEL]}" =~ ^([1-9]|1[01])$ ]] || {
+        log "FIELD_CHANNEL must be a 2.4 GHz channel from 1 to 11"
+        return 1
+    }
+    valid_ipv4 "${CONFIG[FLEET_IP]}" || {
+        log "FLEET_IP must be an IPv4 address"
+        return 1
+    }
+    [[ "${CONFIG[FIELD_SSID]}" != "MWireless" && \
+       "${CONFIG[FIELD_SSID]}" != "${CONFIG[HOTSPOT_SSID]}" ]] || {
+        log "the field, hotspot, and MWireless SSIDs must differ"
+        return 1
+    }
+}
+
+connection_exists() {
+    nmcli -g connection.id connection show "$1" >/dev/null 2>&1
+}
+
+disable_profile() {
+    local profile="$1"
+
+    if connection_exists "$profile"; then
+        nmcli connection modify "$profile" connection.autoconnect no
+        nmcli connection down "$profile" >/dev/null 2>&1 || true
+    fi
+}
+
+ensure_wifi_profile() {
+    local interface="$1"
+    local profile="$2"
+    local ssid="$3"
+
+    if connection_exists "$profile"; then
+        if [[ "$(nmcli -g connection.type connection show "$profile")" != "802-11-wireless" ]]; then
+            nmcli connection delete "$profile"
+        else
+            return
+        fi
+    fi
+    nmcli connection add type wifi ifname "$interface" con-name "$profile" ssid "$ssid"
+}
+
+set_onboard_priorities() {
+    local interface
+    local ssid
+    local uuid
+
+    while IFS= read -r uuid; do
+        [[ -n "$uuid" ]] || continue
+        ssid="$(nmcli -g 802-11-wireless.ssid connection show "$uuid" 2>/dev/null || true)"
+        interface="$(nmcli -g connection.interface-name connection show "$uuid" 2>/dev/null || true)"
+        [[ -z "$interface" || "$interface" == "$ONBOARD_INTERFACE" ]] || continue
+        case "$ssid" in
+            MWireless)
+                nmcli connection modify "$uuid" \
+                    connection.autoconnect yes \
+                    connection.autoconnect-priority 300 \
+                    connection.autoconnect-retries 0
+                ;;
+            "${CONFIG[HOTSPOT_SSID]}")
+                nmcli connection modify "$uuid" \
+                    connection.autoconnect yes \
+                    connection.autoconnect-priority 200 \
+                    connection.autoconnect-retries 0
+                ;;
+        esac
+    done < <(nmcli -g UUID connection show)
+}
+
+configure_field_client() {
+    ensure_wifi_profile "$ONBOARD_INTERFACE" "$CLIENT_PROFILE" "${CONFIG[FIELD_SSID]}"
+    nmcli connection modify "$CLIENT_PROFILE" \
+        connection.interface-name "$ONBOARD_INTERFACE" \
+        connection.autoconnect yes \
+        connection.autoconnect-priority 100 \
+        connection.autoconnect-retries 0 \
+        802-11-wireless.mode infrastructure \
+        802-11-wireless.ssid "${CONFIG[FIELD_SSID]}" \
+        802-11-wireless.cloned-mac-address permanent \
+        802-11-wireless-security.key-mgmt wpa-psk \
+        802-11-wireless-security.proto rsn \
+        802-11-wireless-security.pairwise ccmp \
+        802-11-wireless-security.psk "${CONFIG[FIELD_PSK]}" \
+        ipv4.method manual \
+        ipv4.addresses "${CONFIG[FLEET_IP]}/24" \
+        ipv4.gateway "" \
+        ipv4.dns "" \
+        ipv4.never-default yes \
+        ipv6.method disabled
+}
+
+configure_field_ap() {
+    ensure_wifi_profile "$ONBOARD_INTERFACE" "$AP_PROFILE" "${CONFIG[FIELD_SSID]}"
+    nmcli connection modify "$AP_PROFILE" \
+        connection.interface-name "$ONBOARD_INTERFACE" \
+        connection.autoconnect yes \
+        connection.autoconnect-priority 100 \
+        connection.autoconnect-retries 0 \
+        802-11-wireless.mode ap \
+        802-11-wireless.band bg \
+        802-11-wireless.channel "${CONFIG[FIELD_CHANNEL]}" \
+        802-11-wireless.ssid "${CONFIG[FIELD_SSID]}" \
+        802-11-wireless.cloned-mac-address permanent \
+        802-11-wireless-security.key-mgmt wpa-psk \
+        802-11-wireless-security.proto rsn \
+        802-11-wireless-security.pairwise ccmp \
+        802-11-wireless-security.psk "${CONFIG[FIELD_PSK]}" \
+        ipv4.method manual \
+        ipv4.addresses "${CONFIG[FLEET_IP]}/24" \
+        ipv4.gateway "" \
+        ipv4.dns "" \
+        ipv4.never-default yes \
+        ipv6.method disabled
+}
+
+configure_usb_enterprise() {
+    local interface="$1"
+    local profile="maav-usb-mwireless-$interface"
+
+    ensure_wifi_profile "$interface" "$profile" "MWireless"
+    nmcli connection modify "$profile" \
+        connection.interface-name "$interface" \
+        connection.autoconnect yes \
+        connection.autoconnect-priority 300 \
+        connection.autoconnect-retries 0 \
+        802-11-wireless.mode infrastructure \
+        802-11-wireless.ssid MWireless \
+        802-11-wireless-security.key-mgmt wpa-eap \
+        802-1x.eap peap \
+        802-1x.identity "${CONFIG[DEV_IDENTITY]}" \
+        802-1x.password "${CONFIG[DEV_PASSWORD]}" \
+        802-1x.ca-cert "${CONFIG[DEV_CA_CERTIFICATE]}" \
+        802-1x.phase2-auth mschapv2 \
+        ipv4.method auto \
+        ipv6.method auto
+}
+
+configure_usb_hotspot() {
+    local interface="$1"
+    local profile="maav-usb-hotspot-$interface"
+
+    ensure_wifi_profile "$interface" "$profile" "${CONFIG[HOTSPOT_SSID]}"
+    nmcli connection modify "$profile" \
+        connection.interface-name "$interface" \
+        connection.autoconnect yes \
+        connection.autoconnect-priority 200 \
+        connection.autoconnect-retries 0 \
+        802-11-wireless.mode infrastructure \
+        802-11-wireless.ssid "${CONFIG[HOTSPOT_SSID]}" \
+        802-11-wireless-security.key-mgmt sae \
+        802-11-wireless-security.psk "${CONFIG[HOTSPOT_PSK]}" \
+        ipv4.method auto \
+        ipv6.method auto
+}
+
+configure_master_usb_radios() {
+    local device
+    local type
+
+    while IFS=: read -r device type; do
+        [[ "$type" == "wifi" && "$device" != "$ONBOARD_INTERFACE" ]] || continue
+        configure_usb_enterprise "$device"
+        configure_usb_hotspot "$device"
+        nmcli device set "$device" managed yes autoconnect yes
+    done < <(nmcli --terse --fields DEVICE,TYPE device status)
+}
+
+apply_role() {
+    validate_config
+    nmcli radio wifi on
+    nmcli device set "$ONBOARD_INTERFACE" managed yes autoconnect yes
+    set_onboard_priorities
+
+    case "$ROLE" in
+        master)
+            disable_profile "$CLIENT_PROFILE"
+            configure_field_ap
+            configure_master_usb_radios
+            nmcli connection up "$AP_PROFILE" ifname "$ONBOARD_INTERFACE"
+            ;;
+        client)
+            disable_profile "$AP_PROFILE"
+            configure_field_client
+            ;;
+    esac
+}
+
+stop_role() {
+    disable_profile "$AP_PROFILE"
+    disable_profile "$CLIENT_PROFILE"
+}
+
+reconnect_dev() {
+    local active
+
+    validate_config
+    active="$(nmcli -g GENERAL.CONNECTION device show "$ONBOARD_INTERFACE")"
+    if [[ "$active" == "$CLIENT_PROFILE" ]]; then
+        nmcli connection down "$CLIENT_PROFILE" >/dev/null 2>&1 || true
+        nmcli device connect "$ONBOARD_INTERFACE"
+    else
+        log "$ONBOARD_INTERFACE is using $active; no reconnect is needed"
+    fi
+}
+
+case "${1:-}" in
+    apply)
+        apply_role
+        ;;
+    check)
+        validate_config
+        printf 'role=%s fleet_ip=%s field_ssid=%s\n' \
+            "$ROLE" "${CONFIG[FLEET_IP]}" "${CONFIG[FIELD_SSID]}"
+        ;;
+    is-master)
+        [[ "$(read_role)" == "master" ]]
+        ;;
+    reconnect-dev)
+        reconnect_dev
+        ;;
+    stop)
+        stop_role
+        ;;
+    *)
+        echo "Usage: $0 {apply|check|is-master|reconnect-dev|stop}" >&2
+        exit 2
+        ;;
+esac

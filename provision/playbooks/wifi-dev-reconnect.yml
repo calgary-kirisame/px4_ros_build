@@ -1,0 +1,17 @@
+---
+- name: Ask the qualifier fleet to prefer development Wi-Fi again
+  hosts: qualifier_fleet
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Schedule the Wi-Fi reconnect after Ansible returns
+      ansible.builtin.command:
+        argv:
+          - systemd-run
+          - --unit=maav-wifi-dev-reconnect
+          - --collect
+          - --on-active=2s
+          - /usr/local/sbin/maav-fleet-network
+          - reconnect-dev
+      changed_when: true
