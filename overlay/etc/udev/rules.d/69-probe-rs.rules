@@ -1,0 +1,2 @@
+# SEGGER J-Link on the DWM3001CDK J9 debug port.
+ATTRS{idVendor}=="1366", ATTRS{idProduct}=="0105", MODE="660", GROUP="plugdev", TAG+="uaccess"

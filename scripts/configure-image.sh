@@ -49,10 +49,10 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
   KERNEL_META_VERSION=$(dpkg-query -W -f="\${Version}" linux-image-rpi-2712)
   apt-get update
   apt-get install -y --no-install-recommends \
-    avahi-daemon build-essential ca-certificates curl can-utils dkms \
-    libconsole-bridge1.0 libnss-mdns \
+    avahi-daemon build-essential ca-certificates curl can-utils dkms ffmpeg \
+    git libconsole-bridge1.0 libnss-mdns \
     "linux-headers-rpi-2712=${KERNEL_META_VERSION}" \
-    python3-argcomplete python3-catkin-pkg python3-dbus python3-empy \
+    python3-argcomplete python3-av python3-catkin-pkg python3-dbus python3-empy \
     python3-importlib-metadata python3-lark python3-netifaces \
     python3-numpy python3-opencv python3-osrf-pycommon \
     python3-packaging python3-picamera2 python3-pip python3-psutil \
@@ -108,6 +108,12 @@ EOF
 # Fleet-invariant boot config baked into the image. Per-unit deltas
 # (e.g. drone3's dead cam0 -> cam1) and on-hardware verification stay in
 # provision/playbooks/*.yml -- those edit the same lines idempotently.
+# Remove Raspberry Pi OS defaults before appending the authoritative camera
+# block. Multiple camera_auto_detect lines are order-dependent and obscure the
+# effective configuration.
+sed -i -E \
+  '/^camera_auto_detect=/d; /^dtoverlay=(imx219|ov9281)(,|$)/d' \
+  "$MNT/boot/firmware/config.txt"
 cat >> "$MNT/boot/firmware/config.txt" <<'EOF'
 
 # Use the CM5's external U.FL Wi-Fi/Bluetooth antenna.
@@ -123,8 +129,8 @@ dtparam=pciex1_gen=3
 # CSI cameras: CM carriers don't auto-detect, so name each sensor's port.
 # Mirrors the fleet default in playbooks/camera.yml (verified there via rpicam-hello).
 camera_auto_detect=0
-dtoverlay=imx219,cam1
-dtoverlay=ov9281,cam0
+dtoverlay=imx219,cam1,rotation=0
+dtoverlay=ov9281,cam0,rotation=180
 
 # DW1000 UWB over spidev (userspace driver). RST=GPIO25 (input, no pull); IRQ=GPIO24.
 dtparam=spi=on

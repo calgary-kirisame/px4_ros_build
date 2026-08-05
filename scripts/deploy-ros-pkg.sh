@@ -26,7 +26,14 @@ staging="$(mktemp -d)"
 trap 'rm -rf "$staging"' EXIT
 
 # One package installs as share/ and include/ trees, a python site-packages
-# tree, and a set of libraries whose names are prefixed with the package.
+# tree, a set of libraries whose names are prefixed with the package, and a
+# marker in each ament index resource that names it.
+#
+# The index markers are what let a consumer find the package by name rather
+# than by path. Without the `packages` marker a message package still imports
+# from Python, but `get_package_share_directory` fails, so rosbag2 cannot read
+# the .msg files and records the type with an empty message definition. The
+# bag then holds messages that self-describing readers cannot decode.
 patterns=()
 for pkg in "${pkgs[@]}"; do
   patterns+=(
@@ -34,15 +41,19 @@ for pkg in "${pkgs[@]}"; do
     "opt/ros/jazzy/include/$pkg"
     "opt/ros/jazzy/lib/python3.*/site-packages/$pkg"
     "opt/ros/jazzy/lib/lib${pkg}__*"
+    "opt/ros/jazzy/share/ament_index/resource_index/*/$pkg"
   )
 done
 
 echo "extracting ${pkgs[*]} from $(basename "$tarball")"
 tar xzf "$tarball" -C "$staging" --wildcards "${patterns[@]}"
 
+index="opt/ros/jazzy/share/ament_index/resource_index"
 for pkg in "${pkgs[@]}"; do
   [[ -d "$staging/opt/ros/jazzy/share/$pkg" ]] \
     || { echo "error: $pkg is not in the tarball" >&2; exit 1; }
+  [[ -f "$staging/$index/packages/$pkg" ]] \
+    || { echo "error: $pkg has no ament index marker in the tarball" >&2; exit 1; }
 done
 echo "staged $(find "$staging" -type f | wc -l) files"
 
@@ -50,7 +61,13 @@ echo "staged $(find "$staging" -type f | wc -l) files"
 rsync -a --info=stats1 --rsync-path="sudo rsync" \
   "$staging/opt/ros/jazzy/" "$host:/opt/ros/jazzy/"
 
-echo "verifying import on $host"
+# Import proves the Python tree landed. The share-directory lookup proves the
+# index marker did, which is what rosbag2 and every ament consumer need.
+echo "verifying $host"
 for pkg in "${pkgs[@]}"; do
-  ssh "$host" "source /opt/ros/jazzy/setup.bash && python3 -c 'import $pkg; print(\"$pkg ok\")'"
+  ssh "$host" "source /opt/ros/jazzy/setup.bash && python3 -c '
+import $pkg
+from ament_index_python.packages import get_package_share_directory
+print(\"$pkg ok:\", get_package_share_directory(\"$pkg\"))
+'"
 done
