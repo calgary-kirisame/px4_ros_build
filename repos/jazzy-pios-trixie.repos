@@ -126,7 +126,8 @@ repositories:
   ros2/rcutils:
     type: git
     url: https://github.com/ros2/rcutils.git
-    version: jazzy
+    # Pin before ros2/rcutils#583; it removed an include that rmw relied on.
+    version: 4cff430e271981b2e634c7c0c905f803beafb01d
   ros2/rpyutils:
     type: git
     url: https://github.com/ros2/rpyutils.git
