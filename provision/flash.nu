@@ -204,6 +204,7 @@ def main [hostname: string, image: path, --disable-verify] {
         []
     } else {
         let role = ($fleet_host.fleet_role? | default "")
+        let vehicle_namespace = $fleet_host.vehicle_namespace
         if $role not-in ["master" "client"] {
             error make --unspanned {msg: $"qualifier_fleet.($hostname).fleet_role must be master or client"}
         }
@@ -218,6 +219,17 @@ def main [hostname: string, image: path, --disable-verify] {
             permissions: "0644"
             owner: "root:root"
         } {
+            path: "/etc/environment"
+            content: $"PX4_NAMESPACE=/($vehicle_namespace)\n"
+            append: true
+            permissions: "0644"
+            owner: "root:root"
+        } {
+            path: "/etc/systemd/system.conf.d/60-maav-vehicle.conf"
+            content: $"[Manager]\nDefaultEnvironment=PX4_NAMESPACE=/($vehicle_namespace)\n"
+            permissions: "0644"
+            owner: "root:root"
+        } {
             path: "/etc/maav/dnsmasq-fleet.conf"
             content: (build-dnsmasq-config $inv.wifi)
             permissions: "0644"
@@ -229,7 +241,7 @@ def main [hostname: string, image: path, --disable-verify] {
     let fleet_runcmd = if $fleet_host == null {
         ""
     } else {
-        "  - [systemctl, restart, maav-fleet-network.service]\n"
+        "  - [systemctl, daemon-reload]\n  - [systemctl, restart, maav-fleet-network.service]\n"
     }
 
     # Enterprise WiFi validates the RADIUS certificate before NTP is available.

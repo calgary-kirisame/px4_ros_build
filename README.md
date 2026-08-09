@@ -11,6 +11,7 @@ Pipeline producing Pi OS image for the CM5 with ROS 2 Jazzy and PX4 companion so
 - `git` and `rsync`, so a companion can clone a source tree and receive one
 - Picamera2, NumPy, and OpenCV, which the pure-Python flight packages run on
 - User: `maav`
+- Per-drone `PX4_NAMESPACE` in SSH/login environments and system services
 
 Follow `How 2 flash` if you haven't flashed yet. Otherwise if the drone is accessible over SSH, make changes on the running system instead, because flashing takes long time
 

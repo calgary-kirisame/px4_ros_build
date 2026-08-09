@@ -33,10 +33,13 @@ The image sets these values for login shells and for the system service manager:
 ROS_DOMAIN_ID=0
 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 CYCLONEDDS_URI=file:///etc/cyclonedds/maav-fleet.xml
+PX4_NAMESPACE=/px4_<index>
 ```
 
-The XRCE agent unit also states the values directly. New system services inherit
-the same values from the system manager unless the unit overrides them.
+The first three values are fleet-wide. `PX4_NAMESPACE` is rendered per drone
+from `inventory.yml`. The XRCE agent unit also states the fleet-wide values
+directly. New system services inherit all four values from the system manager
+unless the unit overrides them.
 
 ## PX4 identity provisioning
 

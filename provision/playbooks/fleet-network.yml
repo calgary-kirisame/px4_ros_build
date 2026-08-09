@@ -150,6 +150,25 @@
         mode: "0644"
       notify: Restart fleet network
 
+    - name: Install the per-drone shell environment
+      ansible.builtin.lineinfile:
+        path: /etc/environment
+        regexp: '^PX4_NAMESPACE='
+        line: "PX4_NAMESPACE=/{{ vehicle_namespace }}"
+        create: true
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Install the per-drone system service environment
+      ansible.builtin.template:
+        src: ../templates/60-maav-vehicle.conf.j2
+        dest: /etc/systemd/system.conf.d/60-maav-vehicle.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload systemd
+
     - name: Install the fleet DHCP configuration
       ansible.builtin.template:
         src: ../templates/dnsmasq-fleet.conf.j2
