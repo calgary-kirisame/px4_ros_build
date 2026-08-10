@@ -77,7 +77,7 @@ systemd-nspawn --pipe -D "$MNT" --bind-ro=/etc/resolv.conf bash -c '
   apt-get update
   apt-get install -y --no-install-recommends \
     avahi-daemon build-essential ca-certificates curl can-utils dkms dnsmasq ffmpeg \
-    git libconsole-bridge1.0 libnss-mdns \
+    git libconsole-bridge1.0 liblttng-ust1t64 libnss-mdns \
     "linux-headers-rpi-2712=${KERNEL_META_VERSION}" \
     python3-argcomplete python3-av python3-catkin-pkg python3-dbus python3-empy \
     python3-importlib-metadata python3-lark python3-netifaces \
