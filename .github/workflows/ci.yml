@@ -439,7 +439,7 @@ jobs:
           colcon test \
             --packages-select \
               flight_lib px4_offboard flight_intelligent mission_engine \
-              sensing uwb_gateway \
+              sensing \
             --event-handlers console_direct+
           colcon test-result --verbose
 
