@@ -416,8 +416,9 @@ jobs:
         working-directory: /home/maav/mission10
         shell: bash
         run: |
-          set -euo pipefail
+          set -eo pipefail
           source /opt/ros/jazzy/setup.bash
+          set -u
           colcon build \
             --base-paths ros \
             --packages-select \
@@ -430,9 +431,10 @@ jobs:
         working-directory: /home/maav/mission10
         shell: bash
         run: |
-          set -euo pipefail
+          set -eo pipefail
           source /opt/ros/jazzy/setup.bash
           source install/setup.bash
+          set -u
           colcon test \
             --packages-select \
               flight_lib px4_offboard flight_intelligent mission_engine \
