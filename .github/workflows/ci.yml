@@ -220,6 +220,7 @@ jobs:
 
       - name: Sync px4_msgs from PX4 firmware
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
+        shell: bash
         run: |
           source .github/release-inputs.env
           scripts/sync-px4-msgs.sh "$PX4_AUTOPILOT_REPO" "${{ needs.resolve-inputs.outputs.px4_sha }}"
@@ -325,10 +326,11 @@ jobs:
             build-essential ca-certificates curl git jq pkg-config
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
             | sh -s -- -y --default-toolchain 1.92.0
-          /root/.cargo/bin/rustup target add \
+          "$HOME/.cargo/bin/rustup" target add \
             aarch64-unknown-linux-gnu thumbv7em-none-eabihf
 
       - name: Fetch the resolved Mission 10 source
+        shell: bash
         run: |
           set -euo pipefail
           source .github/release-inputs.env
@@ -339,7 +341,7 @@ jobs:
         working-directory: /tmp/mission10/uwb
         run: |
           set -euo pipefail
-          export PATH=/root/.cargo/bin:$PATH
+          export PATH="$HOME/.cargo/bin:$PATH"
           cargo test --locked --target aarch64-unknown-linux-gnu \
             -p mission10-uwb-protocol -p dw1000-rs -p dw1000-radio
           cargo build --locked --release --target aarch64-unknown-linux-gnu \
@@ -399,6 +401,7 @@ jobs:
         run: tar xzf /tmp/ros-jazzy-px4-arm64.tar.gz -C /
 
       - name: Fetch the matched Mission 10 source
+        shell: bash
         run: |
           set -euo pipefail
           source .github/release-inputs.env
