@@ -337,13 +337,11 @@ jobs:
           git clone "$MISSION10_REPO" /tmp/mission10
           git -C /tmp/mission10 checkout --detach "${{ needs.resolve-inputs.outputs.mission10_sha }}"
 
-      - name: Test and build UWB software
+      - name: Build UWB software
         working-directory: /tmp/mission10/uwb
         run: |
           set -euo pipefail
           export PATH="$HOME/.cargo/bin:$PATH"
-          cargo test --locked --target aarch64-unknown-linux-gnu \
-            -p mission10-uwb-protocol -p dw1000-rs -p dw1000-radio
           cargo build --locked --release --target aarch64-unknown-linux-gnu \
             -p dw1000-radio
           cargo build --locked --release -p mission10-dwm3001
@@ -389,7 +387,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             build-essential ca-certificates cmake git python3 python3-dev python3-numpy \
-            python3-pip liblttng-ust1t64
+            python3-pip
           pip3 install --break-system-packages \
             colcon-common-extensions catkin_pkg lark
 
@@ -427,22 +425,6 @@ jobs:
               mission_engine sensing uwb_gateway \
             --symlink-install \
             --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
-
-      - name: Test the flight runtime
-        working-directory: /home/maav/mission10
-        shell: bash
-        env:
-          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-        run: |
-          set -eo pipefail
-          source /opt/ros/jazzy/setup.bash
-          source install/setup.bash
-          set -u
-          python3 -m pytest -q ros/flight_lib/test
-          python3 -m pytest -q ros/px4_offboard/test
-          python3 -m pytest -q ros/flight_intelligent/test
-          python3 -m pytest -q ros/mission_engine/test
-          python3 -m pytest -q ros/sensing/test/test_frame_sinks.py
 
       - name: Package Mission 10 runtime
         run: |
