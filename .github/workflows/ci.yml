@@ -278,7 +278,18 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # The firmware is a pure function of the PX4 commit, so the resolved sha is
+      # the whole cache key. A hit skips the clone, the toolchain install and the
+      # build, which is the bulk of this job's 90 minute budget.
+      - name: Restore cached firmware
+        id: firmware
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/px4-firmware
+          key: px4-firmware-fmu-v5-${{ needs.resolve-inputs.outputs.px4_sha }}
+
       - name: Fetch the resolved PX4 source
+        if: steps.firmware.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           source .github/release-inputs.env
@@ -287,14 +298,22 @@ jobs:
           git -C /tmp/PX4-Autopilot submodule update --init --recursive
 
       - name: Install PX4 build dependencies
+        if: steps.firmware.outputs.cache-hit != 'true'
         working-directory: /tmp/PX4-Autopilot
         run: ./Tools/setup/ubuntu.sh --no-sim-tools
 
+      - uses: hendrikmuhs/ccache-action@v1.2
+        if: steps.firmware.outputs.cache-hit != 'true'
+        with:
+          key: px4-firmware-fmu-v5
+
       - name: Build FMUv5 firmware
+        if: steps.firmware.outputs.cache-hit != 'true'
         working-directory: /tmp/PX4-Autopilot
         run: make -j"$(nproc)" px4_fmu-v5_default
 
       - name: Verify and package firmware
+        if: steps.firmware.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           firmware=/tmp/PX4-Autopilot/build/px4_fmu-v5_default/px4_fmu-v5_default.px4
@@ -304,6 +323,13 @@ jobs:
           install -m 0644 "$firmware" /tmp/px4-firmware/
           install -m 0755 /tmp/PX4-Autopilot/Tools/px4_uploader.py \
             /tmp/px4-firmware/
+
+      - name: Save firmware cache
+        if: steps.firmware.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: /tmp/px4-firmware
+          key: px4-firmware-fmu-v5-${{ needs.resolve-inputs.outputs.px4_sha }}
 
       - uses: actions/upload-artifact@v7
         with:
