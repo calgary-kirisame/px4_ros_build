@@ -32,6 +32,13 @@ tar xzf "$ARTIFACT_DIR/xrce-dds-agent-arm64.tar.gz" -C "$MNT"
 tar xzf "$ARTIFACT_DIR/mission10-runtime-arm64.tar.gz" -C "$MNT"
 tar xzf "$ARTIFACT_DIR/mission10-uwb-arm64.tar.gz" -C "$MNT"
 
+# The runtime tarball archives home/maav/mission10, so home/maav is not a member
+# of it and the per-member --owner=1000 does not apply. tar creates that missing
+# parent as the extracting user, root. cloud-init later adds the maav account and
+# leaves an existing home directory alone, so the account cannot write its own
+# home unless the ownership is set here.
+chown 1000:1000 "$MNT/home/maav"
+
 mkdir -p "$MNT/opt/maav/firmware" "$MNT/etc/maav"
 install -m 0644 "$ARTIFACT_DIR/px4-firmware/px4_fmu-v5_default.px4" \
   "$MNT/opt/maav/firmware/px4_fmu-v5_default.px4"
@@ -175,6 +182,7 @@ systemd-nspawn --pipe -D "$MNT" bash -c '
   set -euo pipefail
   test -x /usr/local/bin/dw1000-radio
   test -r /home/maav/mission10/install/setup.bash
+  test "$(stat -c %u:%g /home/maav)" = 1000:1000
   test -r /opt/maav/firmware/px4_fmu-v5_default.px4
   test -x /opt/maav/firmware/px4_uploader.py
   test -L /etc/cyclonedds/active.xml
