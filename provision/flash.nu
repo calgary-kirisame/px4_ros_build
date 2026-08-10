@@ -106,7 +106,7 @@ def build-fleet-network-config [wifi: record, host: record] {
     let configured_identity = ($wifi.umich.identity? | default "")
     let umich_password = ($wifi.umich.password? | default "")
     let fleet_ip = ($host.fleet_ip? | default "")
-    let fleet_index = ($host.fleet_index? | default -1)
+    let fleet_index = ($host.fleet_index? | default (-1))
 
     require-single-line "wifi.field.ssid" $field_ssid
     require-single-line "wifi.field.password" $field_password
