@@ -35,7 +35,7 @@
       environment:
         ROS_DOMAIN_ID: "{{ fleet_dds.domain_id | string }}"
         RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
-        CYCLONEDDS_URI: file:///etc/cyclonedds/maav-fleet.xml
+        CYCLONEDDS_URI: file:///etc/cyclonedds/active.xml
       become_user: maav
       register: fleet_identity
       changed_when: "'CHANGED:' in fleet_identity.stdout"

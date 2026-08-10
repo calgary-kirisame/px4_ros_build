@@ -1,12 +1,13 @@
 [Unit]
 Description=Micro XRCE-DDS Agent
-After=network.target
+After=network.target fleet-network.service
+Wants=fleet-network.service
 
 [Service]
 Type=simple
 Environment=ROS_DOMAIN_ID=0
 Environment=RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-Environment=CYCLONEDDS_URI=file:///etc/cyclonedds/maav-fleet.xml
+Environment=CYCLONEDDS_URI=file:///etc/cyclonedds/active.xml
 ExecStartPre=/usr/bin/python3 /etc/xrce-dds/serial-guard.py pre-start /dev/ttyAMA0 35
 ExecStart=/opt/xrce-dds/bin/MicroXRCEAgent serial --dev /dev/ttyAMA0 -b 921600
 ExecStopPost=/usr/bin/python3 /etc/xrce-dds/serial-guard.py post-stop

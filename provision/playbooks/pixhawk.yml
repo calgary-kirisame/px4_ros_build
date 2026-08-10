@@ -1,0 +1,133 @@
+---
+- name: Flash and configure one Pixhawk
+  hosts: qualifier_fleet
+  serial: 1
+  gather_facts: false
+  become: true
+
+  vars:
+    firmware: /opt/maav/firmware/px4_fmu-v5_default.px4
+    uploader: /opt/maav/firmware/px4_uploader.py
+    release_manifest: /etc/maav/image-release.json
+    identity_tool: /usr/local/lib/maav/set-px4-fleet-identity.py
+    usb_check: /usr/local/lib/maav/check-px4-usb.py
+    ros_setup: /opt/ros/jazzy/setup.bash
+    ros_environment:
+      ROS_DOMAIN_ID: "{{ fleet_dds.domain_id | string }}"
+      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+      CYCLONEDDS_URI: file:///etc/cyclonedds/active.xml
+
+  tasks:
+    - name: Check the inventory identity
+      ansible.builtin.assert:
+        that:
+          - vehicle_namespace == 'px4_' ~ (fleet_index | string)
+          - fleet_index | int >= 0
+          - fleet_index | int <= 3
+
+    - name: Install the PX4 deployment helpers
+      ansible.builtin.copy:
+        src: "../files/{{ item.source }}"
+        dest: "/usr/local/lib/maav/{{ item.dest }}"
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - source: check_px4_usb.py
+          dest: check-px4-usb.py
+        - source: set_px4_fleet_identity.py
+          dest: set-px4-fleet-identity.py
+
+    - name: Find one disarmed PX4 USB device
+      ansible.builtin.command: "python3 {{ usb_check }}"
+      become_user: maav
+      register: px4_usb
+      changed_when: false
+
+    - name: Verify the firmware artifact against the image manifest
+      ansible.builtin.shell: |
+        python3 - "{{ release_manifest }}" "{{ firmware }}" <<'PY'
+        import hashlib
+        import json
+        import pathlib
+        import sys
+
+        manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+        firmware = pathlib.Path(sys.argv[2]).read_bytes()
+        actual = hashlib.sha256(firmware).hexdigest()
+        expected = manifest["artifacts"]["px4_firmware"]["sha256"]
+        if actual != expected:
+            raise SystemExit(f"firmware sha256 {actual} != manifest {expected}")
+        PY
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Flash and verify PX4 firmware
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ uploader }}"
+          - --port
+          - "{{ px4_usb.stdout }}"
+          - "{{ firmware }}"
+      become_user: maav
+      register: px4_upload
+      changed_when: true
+
+    - name: Restart the XRCE agent after firmware reboot
+      ansible.builtin.systemd_service:
+        name: xrce-dds-agent.service
+        state: restarted
+
+    - name: Set the fleet DDS identity and reboot PX4 when changed
+      ansible.builtin.shell: >-
+        source {{ ros_setup }} &&
+        python3 {{ identity_tool }}
+        --index {{ fleet_index }}
+        --domain {{ fleet_dds.domain_id }}
+        --reboot-if-changed
+      args:
+        executable: /bin/bash
+      environment: "{{ ros_environment }}"
+      become_user: maav
+      register: fleet_identity
+      changed_when: "'CHANGED:' in fleet_identity.stdout"
+
+    - name: Read back the fleet DDS identity after reboot
+      ansible.builtin.shell: >-
+        source {{ ros_setup }} &&
+        python3 {{ identity_tool }}
+        --index {{ fleet_index }}
+        --domain {{ fleet_dds.domain_id }}
+      args:
+        executable: /bin/bash
+      environment: "{{ ros_environment }}"
+      become_user: maav
+      register: fleet_identity_verify
+      retries: 15
+      delay: 2
+      until: fleet_identity_verify.rc == 0 and 'UNCHANGED:' in fleet_identity_verify.stdout
+      changed_when: false
+
+    - name: Receive one typed PX4 sample in the inventory namespace
+      ansible.builtin.shell: >-
+        source {{ ros_setup }} &&
+        timeout 20 ros2 topic echo
+        /{{ vehicle_namespace }}/fmu/out/vehicle_status_v4
+        px4_msgs/msg/VehicleStatus
+        --qos-reliability best_effort
+        --qos-durability transient_local
+        --qos-depth 1
+        --once
+      args:
+        executable: /bin/bash
+      environment: "{{ ros_environment }}"
+      become_user: maav
+      changed_when: false
+
+    - name: Report the flashed identity
+      ansible.builtin.debug:
+        msg:
+          - "{{ px4_upload.stdout_lines }}"
+          - "{{ fleet_identity_verify.stdout }}"

@@ -106,6 +106,7 @@ def build-fleet-network-config [wifi: record, host: record] {
     let configured_identity = ($wifi.umich.identity? | default "")
     let umich_password = ($wifi.umich.password? | default "")
     let fleet_ip = ($host.fleet_ip? | default "")
+    let fleet_index = ($host.fleet_index? | default -1)
 
     require-single-line "wifi.field.ssid" $field_ssid
     require-single-line "wifi.field.password" $field_password
@@ -114,6 +115,9 @@ def build-fleet-network-config [wifi: record, host: record] {
     require-single-line "wifi.umich.identity" $configured_identity
     require-single-line "wifi.umich.password" $umich_password
     require-single-line "fleet_ip" $fleet_ip
+    if $fleet_index < 0 or $fleet_index > 3 {
+        error make --unspanned {msg: "fleet_index must be from 0 to 3"}
+    }
     if ($field_password | str length) < 8 or ($field_password | str length) > 63 {
         error make --unspanned {msg: "wifi.field.password must contain 8 to 63 characters"}
     }
@@ -129,6 +133,7 @@ def build-fleet-network-config [wifi: record, host: record] {
 
     let identity = (normalize-umich-identity $configured_identity)
     $"# Provisioned from inventory.yml. Keep values on one line.
+FLEET_INDEX=($fleet_index)
 FIELD_SSID=($field_ssid)
 FIELD_PSK=($field_password)
 FIELD_CHANNEL=($field_channel)
@@ -161,7 +166,7 @@ dhcp-authoritative
 dhcp-range=($dhcp.start),($dhcp.end),255.255.255.0,($dhcp.lease_time)
 dhcp-option=3
 dhcp-option=6
-dhcp-leasefile=/var/lib/misc/dnsmasq.maav-fleet.leases
+dhcp-leasefile=/var/lib/misc/dnsmasq.fleet.leases
 ($lease_lines)
 "
 }
@@ -171,13 +176,6 @@ def main [hostname: string, image: path, --disable-verify] {
     let inv = $inventory.all.vars
     let fleet_hosts = $inventory.all.children.qualifier_fleet.hosts
     let fleet_host = ($fleet_hosts | get -o $hostname)
-    let master_count = ($fleet_hosts
-        | transpose hostname settings
-        | where { |row| ($row.settings.fleet_role? | default "") == "master" }
-        | length)
-    if $master_count != 1 {
-        error make --unspanned {msg: "qualifier_fleet must contain one master role"}
-    }
     let device = (detect-rpi-disk)
 
     let network = (build-network-config $inv.wifi)
@@ -203,25 +201,21 @@ def main [hostname: string, image: path, --disable-verify] {
     let fleet_write_files = if $fleet_host == null {
         []
     } else {
-        let role = ($fleet_host.fleet_role? | default "")
         let vehicle_namespace = $fleet_host.vehicle_namespace
-        if $role not-in ["master" "client"] {
-            error make --unspanned {msg: $"qualifier_fleet.($hostname).fleet_role must be master or client"}
-        }
         [{
             path: "/etc/maav/fleet-network.conf"
             content: (build-fleet-network-config $inv.wifi $fleet_host)
-            permissions: "0600"
-            owner: "root:root"
-        } {
-            path: "/etc/maav/fleet-role"
-            content: $"($role)\n"
-            permissions: "0644"
-            owner: "root:root"
+            permissions: "0640"
+            owner: "root:maav"
         } {
             path: "/etc/environment"
             content: $"PX4_NAMESPACE=/($vehicle_namespace)\n"
             append: true
+            permissions: "0644"
+            owner: "root:root"
+        } {
+            path: "/etc/profile.d/60-maav-vehicle.sh"
+            content: $"export PX4_NAMESPACE=/($vehicle_namespace)\n"
             permissions: "0644"
             owner: "root:root"
         } {
@@ -241,7 +235,7 @@ def main [hostname: string, image: path, --disable-verify] {
     let fleet_runcmd = if $fleet_host == null {
         ""
     } else {
-        "  - [systemctl, daemon-reload]\n  - [systemctl, restart, maav-fleet-network.service]\n"
+        "  - [systemctl, daemon-reload]\n  - [systemctl, restart, fleet-network.service]\n"
     }
 
     # Enterprise WiFi validates the RADIUS certificate before NTP is available.
@@ -257,7 +251,7 @@ bootcmd:
 
 users:
   - name: maav
-    groups: sudo,dialout,video,audio,plugdev,systemd-journal
+    groups: sudo,dialout,video,audio,plugdev,gpio,spi,systemd-journal
     shell: /bin/bash
     lock_passwd: false
     passwd: \"($inv.maav_password_hash)\"

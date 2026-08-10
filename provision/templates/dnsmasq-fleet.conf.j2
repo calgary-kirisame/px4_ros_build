@@ -6,7 +6,7 @@ dhcp-authoritative
 dhcp-range={{ wifi.field.dhcp.start }},{{ wifi.field.dhcp.end }},255.255.255.0,{{ wifi.field.dhcp.lease_time }}
 dhcp-option=3
 dhcp-option=6
-dhcp-leasefile=/var/lib/misc/dnsmasq.maav-fleet.leases
+dhcp-leasefile=/var/lib/misc/dnsmasq.fleet.leases
 {% for lease in wifi.field.dhcp.static_leases %}
 dhcp-host={{ lease.mac }},{{ lease.ip }},{{ lease.hostname }},infinite
 {% endfor %}

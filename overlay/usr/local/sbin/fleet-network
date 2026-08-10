@@ -2,16 +2,20 @@
 set -euo pipefail
 
 readonly ONBOARD_INTERFACE="wlan0"
-readonly AP_PROFILE="maav-field-ap"
-readonly CLIENT_PROFILE="maav-field-client"
-readonly CONFIG_FILE="${MAAV_FLEET_CONFIG_FILE:-/etc/maav/fleet-network.conf}"
-readonly ROLE_FILE="${MAAV_FLEET_ROLE_FILE:-/etc/maav/fleet-role}"
+readonly DEFAULT_USB_INTERFACE="${MAAV_USB_WIFI_INTERFACE:-wlan1}"
+readonly AP_PROFILE="field-ap"
+readonly CLIENT_PROFILE="field-client"
+readonly CONFIG_FILE="${FLEET_CONFIG_FILE:-/etc/maav/fleet-network.conf}"
+readonly MODE_FILE="${FLEET_MODE_FILE:-/var/lib/maav/fleet-mode}"
+readonly DDS_CONFIG_DIR="${FLEET_DDS_CONFIG_DIR:-/etc/cyclonedds}"
+readonly DDS_ACTIVE_CONFIG="$DDS_CONFIG_DIR/active.xml"
 
 declare -A CONFIG=()
-ROLE=""
+MASTER=""
+NETWORK=""
 
 log() {
-    printf 'maav-fleet-network: %s\n' "$*" >&2
+    printf 'fleet-network: %s\n' "$*" >&2
 }
 
 read_config() {
@@ -65,34 +69,19 @@ valid_ipv4() {
     done
 }
 
-read_role() {
-    local role
-
-    [[ -r "$ROLE_FILE" ]] || {
-        log "cannot read $ROLE_FILE"
-        return 1
-    }
-    role="$(<"$ROLE_FILE")"
-    case "$role" in
-        master | client)
-            printf '%s\n' "$role"
-            ;;
-        *)
-            log "$ROLE_FILE must contain master or client"
-            return 1
-            ;;
-    esac
-}
-
 validate_config() {
     local key
 
     read_config
-    for key in FIELD_SSID FIELD_PSK FIELD_CHANNEL FLEET_IP DEV_IDENTITY \
+    for key in FLEET_INDEX FIELD_SSID FIELD_PSK FIELD_CHANNEL FLEET_IP DEV_IDENTITY \
         DEV_PASSWORD DEV_CA_CERTIFICATE HOTSPOT_SSID HOTSPOT_PSK; do
         require_value "$key"
     done
-    ROLE="$(read_role)"
+
+    [[ "${CONFIG[FLEET_INDEX]}" =~ ^[0-3]$ ]] || {
+        log "FLEET_INDEX must be 0..3"
+        return 1
+    }
 
     ((${#CONFIG[FIELD_SSID]} <= 32)) || {
         log "FIELD_SSID must be at most 32 characters"
@@ -121,6 +110,30 @@ validate_config() {
     }
 }
 
+read_mode() {
+    local key
+    local value
+
+    MASTER=""
+    NETWORK=""
+    [[ -e "$MODE_FILE" ]] || return 1
+    while IFS='=' read -r key value; do
+        case "$key" in
+            MASTER) MASTER="$value" ;;
+            NETWORK) NETWORK="$value" ;;
+            *) log "invalid key in $MODE_FILE: $key"; return 1 ;;
+        esac
+    done <"$MODE_FILE"
+    [[ "$MASTER" =~ ^[0-3]$ ]] || {
+        log "MASTER in $MODE_FILE must be 0..3"
+        return 1
+    }
+    [[ "$NETWORK" == field || "$NETWORK" == internet ]] || {
+        log "NETWORK in $MODE_FILE must be field or internet"
+        return 1
+    }
+}
+
 connection_exists() {
     nmcli -g connection.id connection show "$1" >/dev/null 2>&1
 }
@@ -143,7 +156,7 @@ ensure_wifi_profile() {
         if [[ "$(nmcli -g connection.type connection show "$profile")" != "802-11-wireless" ]]; then
             nmcli connection delete "$profile"
         else
-            return
+            return 0
         fi
     fi
     nmcli connection add type wifi ifname "$interface" con-name "$profile" ssid "$ssid"
@@ -181,7 +194,7 @@ configure_field_client() {
     nmcli connection modify "$CLIENT_PROFILE" \
         connection.interface-name "$ONBOARD_INTERFACE" \
         connection.autoconnect yes \
-        connection.autoconnect-priority 100 \
+        connection.autoconnect-priority 400 \
         connection.autoconnect-retries 0 \
         802-11-wireless.mode infrastructure \
         802-11-wireless.ssid "${CONFIG[FIELD_SSID]}" \
@@ -203,7 +216,7 @@ configure_field_ap() {
     nmcli connection modify "$AP_PROFILE" \
         connection.interface-name "$ONBOARD_INTERFACE" \
         connection.autoconnect yes \
-        connection.autoconnect-priority 100 \
+        connection.autoconnect-priority 400 \
         connection.autoconnect-retries 0 \
         802-11-wireless.mode ap \
         802-11-wireless.band bg \
@@ -224,7 +237,7 @@ configure_field_ap() {
 
 configure_usb_enterprise() {
     local interface="$1"
-    local profile="maav-usb-mwireless-$interface"
+    local profile="usb-mwireless-$interface"
 
     ensure_wifi_profile "$interface" "$profile" "MWireless"
     nmcli connection modify "$profile" \
@@ -246,7 +259,7 @@ configure_usb_enterprise() {
 
 configure_usb_hotspot() {
     local interface="$1"
-    local profile="maav-usb-hotspot-$interface"
+    local profile="usb-hotspot-$interface"
 
     ensure_wifi_profile "$interface" "$profile" "${CONFIG[HOTSPOT_SSID]}"
     nmcli connection modify "$profile" \
@@ -262,36 +275,156 @@ configure_usb_hotspot() {
         ipv6.method auto
 }
 
-configure_master_usb_radios() {
+configure_usb_radio() {
+    local interface="$1"
+
+    [[ "$interface" != "$ONBOARD_INTERFACE" && \
+       "$interface" =~ ^[[:alnum:]_.-]{1,15}$ ]] || {
+        log "invalid USB Wi-Fi interface: $interface"
+        return 1
+    }
+    configure_usb_enterprise "$interface"
+    configure_usb_hotspot "$interface"
+    if nmcli -g GENERAL.DEVICE device show "$interface" >/dev/null 2>&1; then
+        nmcli device set "$interface" managed yes autoconnect yes
+    fi
+}
+
+configure_usb_radios() {
     local device
     local type
 
+    # NetworkManager keeps profiles for absent devices. Pre-provision wlan1 so
+    # an adapter inserted after this oneshot service exits can autoconnect.
+    configure_usb_radio "$DEFAULT_USB_INTERFACE"
+
     while IFS=: read -r device type; do
-        [[ "$type" == "wifi" && "$device" != "$ONBOARD_INTERFACE" ]] || continue
-        configure_usb_enterprise "$device"
-        configure_usb_hotspot "$device"
-        nmcli device set "$device" managed yes autoconnect yes
+        [[ "$type" == "wifi" && "$device" != "$ONBOARD_INTERFACE" && \
+           "$device" != "$DEFAULT_USB_INTERFACE" ]] || continue
+        configure_usb_radio "$device"
     done < <(nmcli --terse --fields DEVICE,TYPE device status)
 }
 
-apply_role() {
+configure_usb() {
+    local interface="${1:-$DEFAULT_USB_INTERFACE}"
+
+    validate_config
+    configure_usb_radio "$interface"
+}
+
+set_services() {
+    local master="$1"
+    local network="$2"
+
+    if [[ "$master" == yes ]] && systemctl is-enabled --quiet jarvis-web.service; then
+        systemctl start --no-block jarvis-web.service
+    else
+        systemctl stop jarvis-web.service
+    fi
+    if [[ "$master" == yes && "$network" == field ]]; then
+        systemctl start --no-block fleet-dhcp.service
+    else
+        systemctl stop fleet-dhcp.service
+    fi
+}
+
+set_dds_configuration() {
+    local network="$1"
+    local target="$network.xml"
+
+    [[ -r "$DDS_CONFIG_DIR/$target" ]] || {
+        log "missing CycloneDDS configuration: $DDS_CONFIG_DIR/$target"
+        return 1
+    }
+    if [[ "$(readlink "$DDS_ACTIVE_CONFIG" 2>/dev/null || true)" == "$target" ]]; then
+        return
+    fi
+    ln -sfn "$target" "$DDS_ACTIVE_CONFIG"
+    systemctl try-restart --no-block \
+        xrce-dds-agent.service uwb-gateway.service
+}
+
+connect_development() {
+    local ssid
+    local uuid
+
+    disable_profile "$AP_PROFILE"
+    disable_profile "$CLIENT_PROFILE"
+    for ssid in MWireless "${CONFIG[HOTSPOT_SSID]}"; do
+        while IFS= read -r uuid; do
+            [[ -n "$uuid" ]] || continue
+            [[ "$(nmcli -g 802-11-wireless.ssid connection show "$uuid")" == "$ssid" ]] || continue
+            [[ "$(nmcli -g connection.interface-name connection show "$uuid")" == "$ONBOARD_INTERFACE" ]] || continue
+            if nmcli --wait 15 connection up "$uuid" ifname "$ONBOARD_INTERFACE"; then
+                return
+            fi
+        done < <(nmcli -g UUID connection show)
+    done
+    log "no development Wi-Fi profile connected on $ONBOARD_INTERFACE"
+    return 1
+}
+
+apply_selection() {
+    if [[ ! -e "$MODE_FILE" ]]; then
+        connect_development
+        set_dds_configuration internet
+        set_services no internet
+        return
+    fi
+    read_mode
+
+    local is_master=no
+    [[ "${CONFIG[FLEET_INDEX]}" == "$MASTER" ]] && is_master=yes
+    case "$NETWORK:$is_master" in
+        field:yes)
+            disable_profile "$CLIENT_PROFILE"
+            configure_field_ap
+            nmcli connection up "$AP_PROFILE" ifname "$ONBOARD_INTERFACE"
+            ;;
+        field:no)
+            disable_profile "$AP_PROFILE"
+            configure_field_client
+            nmcli connection up "$CLIENT_PROFILE" ifname "$ONBOARD_INTERFACE"
+            ;;
+        internet:*)
+            connect_development
+            ;;
+    esac
+    set_dds_configuration "$NETWORK"
+    set_services "$is_master" "$NETWORK"
+}
+
+apply_mode() {
     validate_config
     nmcli radio wifi on
     nmcli device set "$ONBOARD_INTERFACE" managed yes autoconnect yes
     set_onboard_priorities
+    configure_usb_radios
+    apply_selection
+}
 
-    case "$ROLE" in
-        master)
-            disable_profile "$CLIENT_PROFILE"
-            configure_field_ap
-            configure_master_usb_radios
-            nmcli connection up "$AP_PROFILE" ifname "$ONBOARD_INTERFACE"
-            ;;
-        client)
-            disable_profile "$AP_PROFILE"
-            configure_field_client
-            ;;
-    esac
+set_mode() {
+    local master="$1"
+    local network="$2"
+    local temporary
+
+    validate_config
+    [[ "$master" =~ ^[0-3]$ ]] || {
+        log "master must be 0..3"
+        return 1
+    }
+    [[ "$network" == field || "$network" == internet ]] || {
+        log "network must be field or internet"
+        return 1
+    }
+    mkdir -p "$(dirname "$MODE_FILE")"
+    temporary="${MODE_FILE}.new"
+    printf 'MASTER=%s\nNETWORK=%s\n' "$master" "$network" >"$temporary"
+    chmod 0644 "$temporary"
+    mv "$temporary" "$MODE_FILE"
+    nmcli radio wifi on
+    nmcli device set "$ONBOARD_INTERFACE" managed yes autoconnect yes
+    apply_selection
 }
 
 stop_role() {
@@ -314,24 +447,44 @@ reconnect_dev() {
 
 case "${1:-}" in
     apply)
-        apply_role
+        apply_mode
         ;;
     check)
         validate_config
-        printf 'role=%s fleet_ip=%s field_ssid=%s\n' \
-            "$ROLE" "${CONFIG[FLEET_IP]}" "${CONFIG[FIELD_SSID]}"
+        if [[ -e "$MODE_FILE" ]]; then
+            read_mode
+            printf 'fleet_index=%s master=%s network=%s fleet_ip=%s field_ssid=%s\n' \
+                "${CONFIG[FLEET_INDEX]}" "$MASTER" "$NETWORK" \
+                "${CONFIG[FLEET_IP]}" "${CONFIG[FIELD_SSID]}"
+        else
+            printf 'fleet_index=%s master=none network=internet fleet_ip=%s field_ssid=%s\n' \
+                "${CONFIG[FLEET_INDEX]}" "${CONFIG[FLEET_IP]}" "${CONFIG[FIELD_SSID]}"
+        fi
         ;;
     is-master)
-        [[ "$(read_role)" == "master" ]]
+        validate_config
+        read_mode
+        [[ "${CONFIG[FLEET_INDEX]}" == "$MASTER" ]]
+        ;;
+    is-field-master)
+        validate_config
+        read_mode
+        [[ "${CONFIG[FLEET_INDEX]}" == "$MASTER" && "$NETWORK" == field ]]
+        ;;
+    set-mode)
+        set_mode "${2:-}" "${3:-}"
         ;;
     reconnect-dev)
         reconnect_dev
+        ;;
+    configure-usb)
+        configure_usb "${2:-}"
         ;;
     stop)
         stop_role
         ;;
     *)
-        echo "Usage: $0 {apply|check|is-master|reconnect-dev|stop}" >&2
+        echo "Usage: $0 {apply|check|is-master|is-field-master|set-mode MASTER field|internet|reconnect-dev|configure-usb [interface]|stop}" >&2
         exit 2
         ;;
 esac

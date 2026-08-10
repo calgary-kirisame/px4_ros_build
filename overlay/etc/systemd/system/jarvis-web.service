@@ -1,0 +1,20 @@
+[Unit]
+Description=Jarvis operator voice-command webapp
+After=network.target
+ConditionPathExists=/home/maav/mission10/ros/jarvis_web/.venv/bin/activate
+ConditionPathExists=/home/maav/mission10/models/speech/assets
+ConditionPathExists=/home/maav/.config/jarvis/tls/jarvis.crt.pem
+ConditionPathExists=/home/maav/.config/jarvis/tls/jarvis.key.pem
+
+[Service]
+Type=simple
+User=maav
+Group=maav
+WorkingDirectory=/home/maav/mission10
+ExecStart=/home/maav/mission10/ros/jarvis_web/run_jarvis.sh
+Restart=on-failure
+RestartSec=2
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

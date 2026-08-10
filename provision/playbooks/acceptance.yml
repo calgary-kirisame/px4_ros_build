@@ -1,0 +1,165 @@
+---
+- name: Accept a flashed qualifier companion
+  hosts: qualifier_fleet
+  gather_facts: false
+
+  vars:
+    ros_setup: /opt/ros/jazzy/setup.bash
+    mission_setup: /home/maav/mission10/install/setup.bash
+    ros_environment:
+      ROS_DOMAIN_ID: "{{ fleet_dds.domain_id | string }}"
+      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+      CYCLONEDDS_URI: file:///etc/cyclonedds/active.xml
+
+  tasks:
+    - name: Wait for the companion
+      ansible.builtin.wait_for_connection:
+        timeout: 30
+
+    - name: Run post-flash acceptance
+      ansible.builtin.shell: |
+        set -euo pipefail
+        source "{{ ros_setup }}"
+        source "{{ mission_setup }}"
+        python3 - <<'PY'
+        import hashlib
+        import json
+        import os
+        import pathlib
+        import re
+        import shutil
+        import stat
+        import subprocess
+        import sys
+
+        namespace = "{{ vehicle_namespace }}"
+
+        def run(args, timeout=20):
+            try:
+                return subprocess.run(
+                    args, capture_output=True, text=True, timeout=timeout
+                )
+            except subprocess.TimeoutExpired as exc:
+                return subprocess.CompletedProcess(
+                    args, 124, exc.stdout or "", exc.stderr or "timeout"
+                )
+
+        def service(name, operation):
+            return run(["systemctl", operation, "--quiet", name], timeout=5).returncode == 0
+
+        manifest_path = pathlib.Path("/etc/maav/image-release.json")
+        manifest = json.loads(manifest_path.read_text())
+        artifact_hashes = {}
+        for name, artifact in manifest["artifacts"].items():
+            path = pathlib.Path(artifact["path"])
+            actual = hashlib.sha256(path.read_bytes()).hexdigest()
+            artifact_hashes[name] = actual == artifact["sha256"]
+
+        network = run(["/usr/local/sbin/fleet-network", "check"], timeout=5)
+        network_text = network.stdout.strip()
+        network_match = re.search(r"\bnetwork=(field|internet)\b", network_text)
+        network_mode = network_match.group(1) if network_match else "unknown"
+        dds_link = os.readlink("/etc/cyclonedds/active.xml")
+
+        camera = run(["rpicam-hello", "--list-cameras"], timeout=10)
+        camera_text = camera.stdout + camera.stderr
+        hailo = run(["hailortcli", "fw-control", "identify"], timeout=15)
+
+        topic_list = run(["ros2", "topic", "list", "-t"])
+        topic_text = topic_list.stdout
+        required_topics = [
+            f"/{namespace}/fmu/out/timesync_status [px4_msgs/msg/TimesyncStatus]",
+            f"/{namespace}/fmu/out/vehicle_status_v4 [px4_msgs/msg/VehicleStatus]",
+            f"/{namespace}/fmu/out/vehicle_gps_position [px4_msgs/msg/SensorGps]",
+        ]
+
+        def sample(suffix, msg_type):
+            return run([
+                "ros2", "topic", "echo", f"/{namespace}/fmu/out/{suffix}", msg_type,
+                "--qos-reliability", "best_effort",
+                "--qos-durability", "transient_local",
+                "--qos-depth", "1", "--once",
+            ])
+
+        timesync_sample = sample("timesync_status", "px4_msgs/msg/TimesyncStatus")
+        status_sample = sample("vehicle_status_v4", "px4_msgs/msg/VehicleStatus")
+        gps_sample = sample("vehicle_gps_position", "px4_msgs/msg/SensorGps")
+        gps_fix_match = re.search(r"(?m)^fix_type:\s*(-?\d+)", gps_sample.stdout)
+        gps_fix_type = int(gps_fix_match.group(1)) if gps_fix_match else -1
+
+        diagnostics = run([
+            "ros2", "topic", "echo", "/diagnostics",
+            "diagnostic_msgs/msg/DiagnosticArray", "--once",
+        ])
+        diagnostics_text = diagnostics.stdout
+        socket_path = pathlib.Path("/run/uwb/host.sock")
+        socket_ok = socket_path.exists() and stat.S_ISSOCK(socket_path.stat().st_mode)
+        free_bytes = shutil.disk_usage("/").free
+
+        checks = {
+            "manifest_sources": all(
+                manifest["sources"][name].get("sha")
+                for name in ("px4_ros_build", "mission10", "px4")
+            ),
+            "artifact_hashes": all(artifact_hashes.values()),
+            "network_identity": network.returncode == 0
+                and f"fleet_index={{ fleet_index }}" in network_text,
+            "dds_selection": dds_link == f"{network_mode}.xml",
+            "fleet_network": service("fleet-network.service", "is-active")
+                and service("fleet-network.service", "is-enabled"),
+            "xrce_agent": service("xrce-dds-agent.service", "is-active")
+                and service("xrce-dds-agent.service", "is-enabled"),
+            "uwb_radio": service("uwb-radio.service", "is-active")
+                and service("uwb-radio.service", "is-enabled"),
+            "uwb_gateway": service("uwb-gateway.service", "is-active")
+                and service("uwb-gateway.service", "is-enabled"),
+            "uwb_device": pathlib.Path("/dev/spidev0.0").exists(),
+            "uwb_socket": socket_ok,
+            "uwb_diagnostics": diagnostics.returncode == 0
+                and "uwb/host_link" in diagnostics_text
+                and "connected" in diagnostics_text,
+            "cameras": camera.returncode == 0
+                and "imx219" in camera_text and "ov9281" in camera_text,
+            "hailo": hailo.returncode == 0 and bool(hailo.stdout.strip()),
+            "px4_topics": topic_list.returncode == 0
+                and all(topic in topic_text for topic in required_topics),
+            "px4_timesync": timesync_sample.returncode == 0
+                and "round_trip_time:" in timesync_sample.stdout,
+            "px4_status": status_sample.returncode == 0
+                and "arming_state:" in status_sample.stdout,
+            "px4_gps": gps_sample.returncode == 0 and gps_fix_match is not None,
+            "disk_space": free_bytes >= 1024 ** 3,
+        }
+        summary = {
+            "host": "{{ inventory_hostname }}",
+            "namespace": namespace,
+            "network": network_mode,
+            "checks": checks,
+            "artifact_hashes": artifact_hashes,
+            "gps_fix_type": gps_fix_type,
+            "free_bytes": free_bytes,
+        }
+        summary["ok"] = all(checks.values())
+        print(json.dumps(summary, sort_keys=True))
+        raise SystemExit(0 if summary["ok"] else 1)
+        PY
+      args:
+        executable: /bin/bash
+      environment: "{{ ros_environment }}"
+      register: acceptance
+      changed_when: false
+      failed_when: false
+
+    - name: Parse the acceptance report
+      ansible.builtin.set_fact:
+        acceptance_report: "{{ acceptance.stdout | from_json }}"
+
+    - name: Show the acceptance report
+      ansible.builtin.debug:
+        var: acceptance_report
+
+    - name: Require every acceptance check
+      ansible.builtin.assert:
+        that:
+          - acceptance_report.ok | bool
+        fail_msg: "Post-flash acceptance failed: {{ acceptance_report }}"

@@ -4,7 +4,7 @@
   become: true
 
   vars:
-    fleet_network_script: /usr/local/sbin/maav-fleet-network
+    fleet_network_script: /usr/local/sbin/fleet-network
 
   pre_tasks:
     - name: Check the fleet-wide network settings
@@ -30,10 +30,11 @@
         fail_msg: "Fleet Wi-Fi inventory settings are invalid"
       run_once: true
 
-    - name: Check the per-drone role and address
+    - name: Check the per-drone identity and address
       ansible.builtin.assert:
         that:
-          - fleet_role in ['master', 'client']
+          - fleet_index | int >= 0
+          - fleet_index | int <= 3
           - fleet_ip in fleet_dds.peers
           - vehicle_namespace == 'px4_' ~ (fleet_index | string)
           - "'\\n' not in fleet_ip"
@@ -50,7 +51,7 @@
           - "'\\r' not in wifi.umich.password"
           - "'\\r' not in wifi.hotspot.ssid"
           - "'\\r' not in wifi.hotspot.password"
-        fail_msg: "Fleet role or address is invalid for {{ inventory_hostname }}"
+        fail_msg: "Fleet identity or address is invalid for {{ inventory_hostname }}"
 
     - name: Check operator-device static leases
       ansible.builtin.assert:
@@ -62,18 +63,6 @@
           - "'\\r' not in item.hostname"
         fail_msg: "Invalid operator-device lease for {{ item.hostname | default(item.mac | default('unknown')) }}"
       loop: "{{ wifi.field.dhcp.static_leases }}"
-      run_once: true
-
-    - name: Check that the fleet has one master
-      ansible.builtin.assert:
-        that:
-          - >-
-            groups['qualifier_fleet']
-            | map('extract', hostvars, 'fleet_role')
-            | select('equalto', 'master')
-            | list
-            | length == 1
-        fail_msg: "qualifier_fleet must contain one master role"
       run_once: true
 
   tasks:
@@ -100,7 +89,7 @@
 
     - name: Install the fleet network controller
       ansible.builtin.copy:
-        src: ../../overlay/usr/local/sbin/maav-fleet-network
+        src: ../../overlay/usr/local/sbin/fleet-network
         dest: "{{ fleet_network_script }}"
         owner: root
         group: root
@@ -115,11 +104,39 @@
         group: root
         mode: "0644"
       loop:
-        - maav-fleet-network.service
-        - maav-fleet-dhcp.service
+        - fleet-network.service
+        - fleet-dhcp.service
       notify:
         - Reload systemd
         - Restart fleet network
+
+    - name: Install the CycloneDDS configuration directory
+      ansible.builtin.file:
+        path: /etc/cyclonedds
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install the CycloneDDS mode configurations
+      ansible.builtin.copy:
+        src: "../../overlay/etc/cyclonedds/{{ item }}"
+        dest: "/etc/cyclonedds/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - internet.xml
+        - field.xml
+      notify: Restart fleet network
+
+    - name: Install the active CycloneDDS configuration link
+      ansible.builtin.file:
+        src: internet.xml
+        dest: /etc/cyclonedds/active.xml
+        state: link
+        force: true
+      notify: Restart fleet network
 
     - name: Install the durable development Wi-Fi source
       ansible.builtin.template:
@@ -137,17 +154,8 @@
         src: ../templates/fleet-network.conf.j2
         dest: /etc/maav/fleet-network.conf
         owner: root
-        group: root
-        mode: "0600"
-      notify: Restart fleet network
-
-    - name: Install the per-drone fleet role
-      ansible.builtin.template:
-        src: ../templates/fleet-role.j2
-        dest: /etc/maav/fleet-role
-        owner: root
-        group: root
-        mode: "0644"
+        group: maav
+        mode: "0640"
       notify: Restart fleet network
 
     - name: Install the per-drone shell environment
@@ -156,6 +164,14 @@
         regexp: '^PX4_NAMESPACE='
         line: "PX4_NAMESPACE=/{{ vehicle_namespace }}"
         create: true
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Install the per-drone login shell environment
+      ansible.builtin.template:
+        src: ../templates/60-maav-vehicle.sh.j2
+        dest: /etc/profile.d/60-maav-vehicle.sh
         owner: root
         group: root
         mode: "0644"
@@ -183,7 +199,7 @@
 
     - name: Enable the fleet network controller
       ansible.builtin.systemd_service:
-        name: maav-fleet-network.service
+        name: fleet-network.service
         enabled: true
         state: started
 
@@ -202,6 +218,6 @@
 
     - name: Restart fleet network
       ansible.builtin.systemd_service:
-        name: maav-fleet-network.service
+        name: fleet-network.service
         state: restarted
         daemon_reload: true

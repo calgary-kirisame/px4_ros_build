@@ -4,42 +4,39 @@ The four qualifier companions use ROS domain 0 on the master's WiFi access
 point. CycloneDDS uses unicast discovery because multicast delivery through
 hostapd is not reliable.
 
-| Host | PX4 namespace | Fleet address | Role |
+| Host | PX4 namespace | Fleet address |
 | --- | --- | --- | --- |
-| `drone0` | `px4_0` | `10.77.0.1` | initial master |
-| `drone1` | `px4_1` | `10.77.0.11` | initial client |
-| `drone2` | `px4_2` | `10.77.0.12` | initial client |
-| `drone3` | `px4_3` | `10.77.0.13` | initial client |
-| `drone4` | `px4_4` | `10.77.0.14` | client, no DW1000 |
+| `drone0` | `px4_0` | `10.77.0.1` |
+| `drone1` | `px4_1` | `10.77.0.11` |
+| `drone2` | `px4_2` | `10.77.0.12` |
+| `drone3` | `px4_3` | `10.77.0.13` |
 
-Each address belongs to its drone and does not follow the AP role. The AP role
-service and dnsmasq lease configuration are separate from this configuration.
+Each address belongs to its drone and does not follow the runtime UWB master.
+The spare `drone4` must assume the identity of the airframe that it replaces.
 
 ## Discovery and interface selection
 
-`/etc/cyclonedds/maav-fleet.xml` lists all four addresses as static peers. It
-disables multicast and enables `DontRoute`. CycloneDDS can use `wlan0` and the
-loopback interface only. It does not advertise or send DDS traffic through
-Tailscale or a USB network adapter.
-
-`wlan0` is optional in the CycloneDDS file. A companion without WiFi can still
-run local ROS nodes through loopback. When `wlan0` uses MWireless instead of the
-`10.77.0.0/24` fleet subnet, `DontRoute` prevents the fleet peer addresses from
-using another routed interface. Static peer timeouts do not stop local nodes.
+`/etc/cyclonedds/field.xml` lists the fleet addresses as static peers. It uses
+only `wlan0` and loopback, disables multicast, and enables `DontRoute`.
+`internet.xml` uses loopback only, so development WiFi and Tailscale never see
+fleet discovery traffic. `fleet-network` points `active.xml` at the selected
+configuration before DDS services start.
 
 The image sets these values for login shells and for the system service manager:
 
 ```text
 ROS_DOMAIN_ID=0
 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-CYCLONEDDS_URI=file:///etc/cyclonedds/maav-fleet.xml
+CYCLONEDDS_URI=file:///etc/cyclonedds/active.xml
 PX4_NAMESPACE=/px4_<index>
 ```
 
 The first three values are fleet-wide. `PX4_NAMESPACE` is rendered per drone
 from `inventory.yml`. The XRCE agent unit also states the fleet-wide values
 directly. New system services inherit all four values from the system manager
-unless the unit overrides them.
+unless the unit overrides them. The per-drone value is also installed in
+`/etc/profile.d` because Tailscale SSH does not run the host's PAM stack and
+therefore does not import `/etc/environment` for a login shell.
 
 ## PX4 identity provisioning
 
@@ -48,21 +45,17 @@ PX4 parameters cannot store a string namespace. This PX4 fork changes the
 produces the same `px4_<index>` namespace that SITL supplies through
 `PX4_UXRCE_DDS_NS`.
 
-Flash a firmware built from this fork before provisioning the identity. Stop all
-flight operations and keep every vehicle disarmed. Run the playbook before the
-companions join the fleet AP, or power only one unconfigured flight controller.
-This prevents several bare `/fmu/*` endpoints from responding to the same
-request. Then run:
+Connect one disarmed flight controller to its companion over USB, then flash the
+firmware and configure its identity together:
 
 ```bash
 cd px4_ros_build/provision
-ansible-playbook playbooks/fleet-identity.yml -K
+ansible-playbook playbooks/pixhawk.yml --limit drone2
 ```
 
-The playbook reads each mapping from `inventory.yml`. It uses the PX4 DDS
-parameter request topics to set and read back `UXRCE_DDS_DOM_ID=0` and
-`UXRCE_DDS_NS_IDX=<index>`. The operation is idempotent. Power-cycle each flight
-controller after a changed result because both parameters take effect at boot.
+The playbook uploads the firmware baked into the companion image, verifies it,
+sets `UXRCE_DDS_DOM_ID=0` and `UXRCE_DDS_NS_IDX=<index>`, reboots PX4 over DDS,
+and requires a typed sample under the resulting namespace.
 
 The playbook can reach an unconfigured flight controller through bare `/fmu/*`
 topics. It can reach an already configured controller through its expected

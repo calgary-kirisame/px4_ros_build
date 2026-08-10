@@ -29,6 +29,32 @@ mount "$BOOT_DEV" "$MNT/boot/firmware"
 
 tar xzf "$ARTIFACT_DIR/ros-jazzy-px4-arm64.tar.gz" -C "$MNT"
 tar xzf "$ARTIFACT_DIR/xrce-dds-agent-arm64.tar.gz" -C "$MNT"
+tar xzf "$ARTIFACT_DIR/mission10-runtime-arm64.tar.gz" -C "$MNT"
+tar xzf "$ARTIFACT_DIR/mission10-uwb-arm64.tar.gz" -C "$MNT"
+
+mkdir -p "$MNT/opt/maav/firmware" "$MNT/etc/maav"
+install -m 0644 "$ARTIFACT_DIR/px4-firmware/px4_fmu-v5_default.px4" \
+  "$MNT/opt/maav/firmware/px4_fmu-v5_default.px4"
+install -m 0755 "$ARTIFACT_DIR/px4-firmware/px4_uploader.py" \
+  "$MNT/opt/maav/firmware/px4_uploader.py"
+
+FIRMWARE_SHA=$(sha256sum "$MNT/opt/maav/firmware/px4_fmu-v5_default.px4" | cut -d' ' -f1)
+RADIO_SHA=$(sha256sum "$MNT/usr/local/bin/dw1000-radio" | cut -d' ' -f1)
+DWM3001_SHA=$(sha256sum "$MNT/opt/maav/firmware/mission10-dwm3001" | cut -d' ' -f1)
+jq \
+  --slurpfile firmware "$MNT/opt/maav/firmware/px4_fmu-v5_default.px4" \
+  --arg firmware_sha "$FIRMWARE_SHA" \
+  --arg radio_sha "$RADIO_SHA" \
+  --arg dwm3001_sha "$DWM3001_SHA" \
+  '.firmware = ($firmware[0] | {
+      git_hash, git_identity, board_id, image_size, image_maxsize
+    }) |
+  .artifacts = {
+    px4_firmware: {path: "/opt/maav/firmware/px4_fmu-v5_default.px4", sha256: $firmware_sha},
+    dw1000_radio: {path: "/usr/local/bin/dw1000-radio", sha256: $radio_sha},
+    dwm3001_firmware: {path: "/opt/maav/firmware/mission10-dwm3001", sha256: $dwm3001_sha}
+  }' "$ARTIFACT_DIR/image-release.json" > "$MNT/etc/maav/image-release.json"
+cp "$MNT/etc/maav/image-release.json" /tmp/image-release.json
 
 mkdir -p "$MNT/var/tmp/py-debs"
 cp "$ARTIFACT_DIR/py-debs/"*.deb "$MNT/var/tmp/py-debs/"
@@ -38,6 +64,7 @@ install -m 0755 "$SCRIPT_DIR/hailo-pcie-driver.postinst" \
   "$MNT/var/tmp/hailo-pcie-driver.postinst"
 
 cp -a "$REPO_DIR/overlay/." "$MNT/"
+ln -sfn internet.xml "$MNT/etc/cyclonedds/active.xml"
 echo 'export PATH="/opt/xrce-dds/bin:$PATH"' > "$MNT/etc/profile.d/xrce-dds.sh"
 
 systemd-nspawn --pipe -D "$MNT" ldconfig
@@ -90,8 +117,10 @@ systemd-nspawn --pipe -D "$MNT" raspi-config nonint do_change_locale en_US.UTF-8
 
 systemd-nspawn --pipe -D "$MNT" systemctl enable \
   avahi-daemon.service \
-  maav-fleet-network.service \
+  fleet-network.service \
   ssh \
+  uwb-gateway.service \
+  uwb-radio.service \
   xrce-dds-agent.service \
   tailscale-authenticate.service \
   systemd-timesyncd.service
@@ -144,6 +173,17 @@ EOF
 
 systemd-nspawn --pipe -D "$MNT" bash -c '
   set -euo pipefail
+  test -x /usr/local/bin/dw1000-radio
+  test -r /home/maav/mission10/install/setup.bash
+  test -r /opt/maav/firmware/px4_fmu-v5_default.px4
+  test -x /opt/maav/firmware/px4_uploader.py
+  test -L /etc/cyclonedds/active.xml
+  systemd-analyze verify \
+    /etc/systemd/system/fleet-network.service \
+    /etc/systemd/system/fleet-dhcp.service \
+    /etc/systemd/system/uwb-radio.service \
+    /etc/systemd/system/uwb-gateway.service \
+    /etc/systemd/system/xrce-dds-agent.service
   rm -rf /var/lib/apt/lists/*
   rm -rf /var/cache/debconf/*-old
 '

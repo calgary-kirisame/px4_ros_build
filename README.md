@@ -6,11 +6,14 @@ Pipeline producing Pi OS image for the CM5 with ROS 2 Jazzy and PX4 companion so
 - CycloneDDS as the default RMW
 - Micro XRCE-DDS Agent v2.4.x running as a systemd service
 - `px4_msgs` generated from the PX4-Autopilot commit pinned by image CI
+- Matching PX4 firmware and uploader at `/opt/maav/firmware/`
+- Mission 10 flight runtime at `/home/maav/mission10`
+- Direct DW1000 service at `/usr/local/bin/dw1000-radio`
 - rosbag2 for flight data recording
 - HailoRT and a DKMS-built Hailo-8 PCIe driver matched to the image kernel
 - `git` and `rsync`, so a companion can clone a source tree and receive one
 - Picamera2, NumPy, and OpenCV, which the pure-Python flight packages run on
-- User: `maav`
+- User: `maav`, with direct camera, serial, GPIO, and SPI device access
 - Per-drone `PX4_NAMESPACE` in SSH/login environments and system services
 
 Follow `How 2 flash` if you haven't flashed yet. Otherwise if the drone is accessible over SSH, make changes on the running system instead, because flashing takes long time
@@ -23,11 +26,17 @@ Follow `How 2 flash` if you haven't flashed yet. Otherwise if the drone is acces
   `/usr/lib/netplan/50-maav-wifi.yaml` with mode 0600. Raspberry Pi OS may
   rebuild or remove NetworkManager-owned files under `/etc/netplan`; the
   `/usr/lib/netplan` copy is the durable source of truth.
-- `provision/playbooks/health.yml` checks companion ROS/uXRCE/GPS data-path health across the fleet
-- `provision/playbooks/fleet-network.yml` applies the role flag, fixed fleet
+- `provision/playbooks/pixhawk.yml` flashes the image-matched PX4 firmware and
+  applies the inventory DDS identity
+- `provision/playbooks/acceptance.yml` checks the complete local post-flash
+  hardware and software path
+- `provision/playbooks/fleet-network.yml` applies the fleet identity, fixed
   address, field AP settings, and operator-device DHCP configuration
 - `provision/playbooks/wifi-dev-reconnect.yml` asks connected clients to select
   the highest-priority visible development SSID
+- Every drone pre-provisions dormant MWireless and hotspot profiles for the
+  optional USB Wi-Fi adapter on `wlan1`. The adapter supplies development
+  access only to the drone carrying it.
 - `provision/playbooks/hailo.yml` repairs and verifies the Hailo runtime,
   driver, PCIe link, and firmware
 
@@ -40,7 +49,15 @@ Requires `rpi-imager` >2.0 and `nu`!!
 1. Edit `provision/inventory.yml` with WiFi credentials and a reusable tagged pre-auth key from <https://login.tailscale.com/admin/settings/keys>
 2. Expose the CM5 eMMC: `sudo rpiboot -d mass-storage-gadget64`
 3. Flash: `cd provision && nu flash.nu <hostname> path/to/px4-companion-cm5-YYYYMMDD.img.xz`
-4. `ssh maav@<hostname>`
+4. Connect the Pixhawk USB cable and run
+   `ansible-playbook playbooks/pixhawk.yml --limit <hostname>`
+5. Run `ansible-playbook playbooks/acceptance.yml --limit <hostname>`
+6. `ssh maav@<hostname>`
+
+Each push to `main` resolves the Mission 10 and PX4 refs in
+`.github/release-inputs.env` once. The image, firmware, generated messages, and
+UWB programs are built from those immutable SHAs and recorded in
+`/etc/maav/image-release.json`.
 
 ## Other stuff
 

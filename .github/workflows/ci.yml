@@ -8,13 +8,48 @@ on:
 env:
   PIOS_MANIFEST_URL: https://downloads.raspberrypi.com/os_list_imagingutility_v4.json
   XRCE_DDS_VERSION: v2.4.3
-  PX4_AUTOPILOT_REPO: https://github.com/calgary-kirisame/PX4-Autopilot.git
-  PX4_AUTOPILOT_REF: 88a57ce3f216f3f24fa18a658cb563c34d413ac8
   # Detection wire for the mission engine. The tip of the distro branch, pinned.
   VISION_MSGS_REPO: https://github.com/ros-perception/vision_msgs.git
   VISION_MSGS_REF: adbf56af9f77e3c8ab2552e25dc99e4a8a77fb27
 
 jobs:
+  resolve-inputs:
+    runs-on: ubuntu-24.04
+    outputs:
+      mission10_sha: ${{ steps.refs.outputs.mission10_sha }}
+      px4_sha: ${{ steps.refs.outputs.px4_sha }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Resolve release inputs
+        id: refs
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .github/release-inputs.env
+
+          resolve_ref() {
+            local repo="$1"
+            local ref="$2"
+            local sha
+            if [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+              sha="$ref"
+            else
+              sha="$(git ls-remote "$repo" \
+                "$ref" "refs/heads/$ref" "refs/tags/$ref" \
+                | cut -f1 | head -n1)"
+            fi
+            test -n "$sha"
+            printf '%s\n' "$sha"
+          }
+
+          mission10_sha="$(resolve_ref "$MISSION10_REPO" "$MISSION10_REF")"
+          px4_sha="$(resolve_ref "$PX4_AUTOPILOT_REPO" "$PX4_AUTOPILOT_REF")"
+          echo "mission10_sha=$mission10_sha" >> "$GITHUB_OUTPUT"
+          echo "px4_sha=$px4_sha" >> "$GITHUB_OUTPUT"
+          echo "mission10 $MISSION10_REF -> $mission10_sha"
+          echo "PX4 $PX4_AUTOPILOT_REF -> $px4_sha"
+
   ros-base:
     runs-on: ubuntu-24.04-arm
     container:
@@ -80,7 +115,7 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=/opt/xrce-dds \
             -DCMAKE_BUILD_TYPE=Release \
             -DUAGENT_BUILD_TESTS=OFF
-          make -j$(nproc)
+          make -j"$(nproc)"
           sudo make install
 
       - name: Package tarball
@@ -141,41 +176,19 @@ jobs:
           retention-days: 7
 
   px4-pkgs:
-    needs: ros-base
+    needs: [resolve-inputs, ros-base]
     runs-on: ubuntu-24.04-arm
     container:
       image: debian:trixie
     steps:
       - uses: actions/checkout@v6
 
-      - name: Resolve PX4 firmware ref
-        id: px4-ref
-        shell: bash
-        run: |
-          set -euo pipefail
-          apt-get update
-          apt-get install -y --no-install-recommends ca-certificates git
-
-          if [[ "${PX4_AUTOPILOT_REF}" =~ ^[0-9a-f]{40}$ ]]; then
-            sha="${PX4_AUTOPILOT_REF}"
-          else
-            sha="$(git ls-remote "${PX4_AUTOPILOT_REPO}" \
-              "${PX4_AUTOPILOT_REF}" \
-              "refs/heads/${PX4_AUTOPILOT_REF}" \
-              "refs/tags/${PX4_AUTOPILOT_REF}" \
-              | cut -f1 | head -n1)"
-          fi
-
-          test -n "$sha"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "Resolved ${PX4_AUTOPILOT_REF} to $sha"
-
       - name: Restore cached outputs
         id: pkgs-cache
         uses: actions/cache/restore@v5
         with:
           path: /tmp/ros-jazzy-px4-arm64.tar.gz
-          key: px4-pkgs-outputs-${{ steps.px4-ref.outputs.sha }}-${{ hashFiles('.github/workflows/ci.yml', 'repos/jazzy-pios-trixie.repos', 'scripts/build-ros.sh', 'scripts/install-build-deps.sh', 'scripts/sync-px4-msgs.sh') }}
+          key: px4-pkgs-outputs-${{ needs.resolve-inputs.outputs.px4_sha }}-${{ hashFiles('.github/workflows/ci.yml', 'repos/jazzy-pios-trixie.repos', 'scripts/build-ros.sh', 'scripts/install-build-deps.sh', 'scripts/sync-px4-msgs.sh') }}
 
       - name: Install build dependencies
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
@@ -193,7 +206,7 @@ jobs:
       - uses: hendrikmuhs/ccache-action@v1.2
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
         with:
-          key: px4-pkgs-${{ steps.px4-ref.outputs.sha }}-${{ hashFiles('scripts/sync-px4-msgs.sh') }}
+          key: px4-pkgs-${{ needs.resolve-inputs.outputs.px4_sha }}-${{ hashFiles('scripts/sync-px4-msgs.sh') }}
 
       - uses: actions/download-artifact@v8
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
@@ -207,7 +220,9 @@ jobs:
 
       - name: Sync px4_msgs from PX4 firmware
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
-        run: scripts/sync-px4-msgs.sh "${{ env.PX4_AUTOPILOT_REPO }}" "${{ steps.px4-ref.outputs.sha }}"
+        run: |
+          source .github/release-inputs.env
+          scripts/sync-px4-msgs.sh "$PX4_AUTOPILOT_REPO" "${{ needs.resolve-inputs.outputs.px4_sha }}"
 
       - name: Fetch vision_msgs
         if: steps.pkgs-cache.outputs.cache-hit != 'true'
@@ -247,7 +262,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: /tmp/ros-jazzy-px4-arm64.tar.gz
-          key: px4-pkgs-outputs-${{ steps.px4-ref.outputs.sha }}-${{ hashFiles('.github/workflows/ci.yml', 'repos/jazzy-pios-trixie.repos', 'scripts/build-ros.sh', 'scripts/install-build-deps.sh', 'scripts/sync-px4-msgs.sh') }}
+          key: px4-pkgs-outputs-${{ needs.resolve-inputs.outputs.px4_sha }}-${{ hashFiles('.github/workflows/ci.yml', 'repos/jazzy-pios-trixie.repos', 'scripts/build-ros.sh', 'scripts/install-build-deps.sh', 'scripts/sync-px4-msgs.sh') }}
 
       - uses: actions/upload-artifact@v7
         with:
@@ -255,8 +270,195 @@ jobs:
           path: /tmp/ros-jazzy-px4-arm64.tar.gz
           retention-days: 7
 
+  px4-firmware:
+    needs: resolve-inputs
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Fetch the resolved PX4 source
+        run: |
+          set -euo pipefail
+          source .github/release-inputs.env
+          git clone "$PX4_AUTOPILOT_REPO" /tmp/PX4-Autopilot
+          git -C /tmp/PX4-Autopilot checkout --detach "${{ needs.resolve-inputs.outputs.px4_sha }}"
+          git -C /tmp/PX4-Autopilot submodule update --init --recursive
+
+      - name: Install PX4 build dependencies
+        working-directory: /tmp/PX4-Autopilot
+        run: ./Tools/setup/ubuntu.sh --no-sim-tools
+
+      - name: Build FMUv5 firmware
+        working-directory: /tmp/PX4-Autopilot
+        run: make -j"$(nproc)" px4_fmu-v5_default
+
+      - name: Verify and package firmware
+        run: |
+          set -euo pipefail
+          firmware=/tmp/PX4-Autopilot/build/px4_fmu-v5_default/px4_fmu-v5_default.px4
+          jq -e --arg sha "${{ needs.resolve-inputs.outputs.px4_sha }}" \
+            '.git_hash == $sha' "$firmware" >/dev/null
+          mkdir -p /tmp/px4-firmware
+          install -m 0644 "$firmware" /tmp/px4-firmware/
+          install -m 0755 /tmp/PX4-Autopilot/Tools/px4_uploader.py \
+            /tmp/px4-firmware/
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: px4-firmware
+          path: /tmp/px4-firmware/
+          retention-days: 30
+
+  mission10-uwb:
+    needs: resolve-inputs
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: debian:trixie
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential ca-certificates curl git jq pkg-config
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain 1.92.0
+          /root/.cargo/bin/rustup target add \
+            aarch64-unknown-linux-gnu thumbv7em-none-eabihf
+
+      - name: Fetch the resolved Mission 10 source
+        run: |
+          set -euo pipefail
+          source .github/release-inputs.env
+          git clone "$MISSION10_REPO" /tmp/mission10
+          git -C /tmp/mission10 checkout --detach "${{ needs.resolve-inputs.outputs.mission10_sha }}"
+
+      - name: Test and build UWB software
+        working-directory: /tmp/mission10/uwb
+        run: |
+          set -euo pipefail
+          export PATH=/root/.cargo/bin:$PATH
+          cargo test --locked --target aarch64-unknown-linux-gnu \
+            -p mission10-uwb-protocol -p dw1000-rs -p dw1000-radio
+          cargo build --locked --release --target aarch64-unknown-linux-gnu \
+            -p dw1000-radio
+          cargo build --locked --release -p mission10-dwm3001
+
+      - name: Package UWB release
+        run: |
+          set -euo pipefail
+          root=/tmp/uwb-release
+          install -D -m 0755 \
+            /tmp/mission10/uwb/target/aarch64-unknown-linux-gnu/release/dw1000-radio \
+            "$root/usr/local/bin/dw1000-radio"
+          install -D -m 0644 \
+            /tmp/mission10/uwb/target/thumbv7em-none-eabihf/release/mission10-dwm3001 \
+            "$root/opt/maav/firmware/mission10-dwm3001"
+          tar czf /tmp/mission10-uwb-arm64.tar.gz -C "$root" .
+          air_version="$(sed -n 's/.*AIR_PROTOCOL_VERSION: u8 = \([0-9][0-9]*\);/\1/p' \
+            /tmp/mission10/uwb/protocol/src/air.rs)"
+          host_version="$(sed -n 's/.*HOST_PROTOCOL_VERSION: u8 = \([0-9][0-9]*\);/\1/p' \
+            /tmp/mission10/uwb/protocol/src/host.rs)"
+          test -n "$air_version"
+          test -n "$host_version"
+          jq -n --argjson air "$air_version" --argjson host "$host_version" \
+            '{uwb_air: $air, uwb_host: $host}' > /tmp/uwb-protocol.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mission10-uwb
+          path: |
+            /tmp/mission10-uwb-arm64.tar.gz
+            /tmp/uwb-protocol.json
+          retention-days: 30
+
+  mission10-runtime:
+    needs: [resolve-inputs, px4-pkgs]
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: debian:trixie
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential ca-certificates cmake git python3 python3-dev python3-pip
+          pip3 install --break-system-packages \
+            colcon-common-extensions catkin_pkg lark
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ros-jazzy-px4
+          path: /tmp
+
+      - name: Install the matched ROS underlay
+        run: tar xzf /tmp/ros-jazzy-px4-arm64.tar.gz -C /
+
+      - name: Fetch the matched Mission 10 source
+        run: |
+          set -euo pipefail
+          source .github/release-inputs.env
+          mkdir -p /home/maav
+          git clone "$MISSION10_REPO" /home/maav/mission10
+          git -C /home/maav/mission10 checkout -B "$MISSION10_REF" \
+            "${{ needs.resolve-inputs.outputs.mission10_sha }}"
+          git -C /home/maav/mission10 branch --set-upstream-to \
+            "origin/$MISSION10_REF" "$MISSION10_REF"
+
+      - name: Build the flight runtime
+        working-directory: /home/maav/mission10
+        shell: bash
+        run: |
+          set -euo pipefail
+          source /opt/ros/jazzy/setup.bash
+          colcon build \
+            --base-paths ros \
+            --packages-select \
+              flight_interfaces flight_lib px4_offboard flight_intelligent \
+              mission_engine sensing uwb_gateway \
+            --symlink-install \
+            --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+
+      - name: Test the flight runtime
+        working-directory: /home/maav/mission10
+        shell: bash
+        run: |
+          set -euo pipefail
+          source /opt/ros/jazzy/setup.bash
+          source install/setup.bash
+          colcon test \
+            --packages-select \
+              flight_lib px4_offboard flight_intelligent mission_engine \
+              sensing uwb_gateway \
+            --event-handlers console_direct+
+          colcon test-result --verbose
+
+      - name: Package Mission 10 runtime
+        run: |
+          rm -rf /home/maav/mission10/log
+          tar czf /tmp/mission10-runtime-arm64.tar.gz \
+            --owner=1000 --group=1000 -C / home/maav/mission10
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mission10-runtime
+          path: /tmp/mission10-runtime-arm64.tar.gz
+          retention-days: 30
+
   assemble-image:
-    needs: [ros-base, xrce-agent, px4-pkgs, py-debs]
+    needs:
+      - resolve-inputs
+      - ros-base
+      - xrce-agent
+      - px4-pkgs
+      - px4-firmware
+      - mission10-uwb
+      - mission10-runtime
+      - py-debs
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v6
@@ -278,6 +480,40 @@ jobs:
         with:
           name: py-debs
           path: /tmp/artifacts/py-debs
+      - uses: actions/download-artifact@v8
+        with:
+          name: px4-firmware
+          path: /tmp/artifacts/px4-firmware
+      - uses: actions/download-artifact@v8
+        with:
+          name: mission10-uwb
+          path: /tmp/artifacts
+      - uses: actions/download-artifact@v8
+        with:
+          name: mission10-runtime
+          path: /tmp/artifacts
+
+      - name: Write matched release metadata
+        run: |
+          set -euo pipefail
+          source .github/release-inputs.env
+          jq -n \
+            --slurpfile protocols /tmp/artifacts/uwb-protocol.json \
+            --arg image_repo "$GITHUB_REPOSITORY" \
+            --arg image_sha "$GITHUB_SHA" \
+            --arg mission10_repo "$MISSION10_REPO" \
+            --arg mission10_ref "$MISSION10_REF" \
+            --arg mission10_sha "${{ needs.resolve-inputs.outputs.mission10_sha }}" \
+            --arg px4_repo "$PX4_AUTOPILOT_REPO" \
+            --arg px4_ref "$PX4_AUTOPILOT_REF" \
+            --arg px4_sha "${{ needs.resolve-inputs.outputs.px4_sha }}" \
+            '{schema: 1,
+              protocols: $protocols[0],
+              sources: {
+                px4_ros_build: {repository: $image_repo, sha: $image_sha},
+                mission10: {repository: $mission10_repo, ref: $mission10_ref, sha: $mission10_sha},
+                px4: {repository: $px4_repo, ref: $px4_ref, sha: $px4_sha}
+              }}' > /tmp/artifacts/image-release.json
 
       - name: Resolve Pi OS URL
         id: pios
@@ -314,4 +550,5 @@ jobs:
           path: |
             /tmp/px4-companion-cm5-*.img.xz
             /tmp/hailo-build-metadata.json
+            /tmp/image-release.json
           retention-days: 30

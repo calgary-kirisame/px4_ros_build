@@ -1,0 +1,13 @@
+#!/bin/bash
+set -eo pipefail
+
+source /opt/ros/jazzy/setup.bash
+source /home/maav/mission10/install/setup.bash
+set -u
+export PYTHONPATH="/home/maav/mission10/uwb/protocol/python${PYTHONPATH:+:$PYTHONPATH}"
+
+readonly CONFIG=/etc/maav/fleet-network.conf
+index="$(sed -n 's/^FLEET_INDEX=//p' "$CONFIG")"
+exec ros2 run uwb_gateway uwb_gateway --ros-args \
+    -p vehicle_id:="$index" \
+    -p vehicle_namespace:="px4_$index"

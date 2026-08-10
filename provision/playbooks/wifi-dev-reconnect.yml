@@ -12,6 +12,6 @@
           - --unit=maav-wifi-dev-reconnect
           - --collect
           - --on-active=2s
-          - /usr/local/sbin/maav-fleet-network
+          - /usr/local/sbin/fleet-network
           - reconnect-dev
       changed_when: true

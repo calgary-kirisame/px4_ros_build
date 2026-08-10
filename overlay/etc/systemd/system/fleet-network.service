@@ -1,0 +1,15 @@
+[Unit]
+Description=Fleet Wi-Fi configuration
+After=NetworkManager.service
+Wants=NetworkManager.service fleet-dhcp.service
+Before=fleet-dhcp.service
+ConditionPathExists=/etc/maav/fleet-network.conf
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/fleet-network apply
+ExecStop=/usr/local/sbin/fleet-network stop
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

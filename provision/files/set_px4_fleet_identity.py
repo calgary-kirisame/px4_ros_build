@@ -8,7 +8,7 @@ import sys
 import time
 
 import rclpy
-from px4_msgs.msg import ParameterRequest, ParameterResponse
+from px4_msgs.msg import ParameterRequest, ParameterResponse, VehicleCommand
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 
@@ -40,6 +40,9 @@ class ParameterClient(Node):
             topic(namespace, "out/parameter_response"),
             self._on_response,
             qos,
+        )
+        self.command_publisher = self.create_publisher(
+            VehicleCommand, topic(namespace, "in/vehicle_command"), qos
         )
         self._request_id = time.monotonic_ns() & 0xFFFFFFFF
         self._wanted_id: int | None = None
@@ -83,6 +86,20 @@ class ParameterClient(Node):
             if self._response is not None:
                 return self._response
         raise TimeoutError(name)
+
+    def reboot(self) -> None:
+        command = VehicleCommand()
+        command.timestamp = self.get_clock().now().nanoseconds // 1000
+        command.param1 = 1.0
+        command.command = VehicleCommand.VEHICLE_CMD_PREFLIGHT_REBOOT_SHUTDOWN
+        command.target_system = 1
+        command.target_component = 1
+        command.source_system = 1
+        command.source_component = 1
+        command.from_external = True
+        for _ in range(4):
+            self.command_publisher.publish(command)
+            rclpy.spin_once(self, timeout_sec=0.1)
 
 
 def checked(response: ParameterResponse, name: str) -> ParameterResponse:
@@ -138,6 +155,7 @@ def main() -> int:
     parser.add_argument("--index", type=int, required=True)
     parser.add_argument("--domain", type=int, default=0)
     parser.add_argument("--timeout", type=float, default=4.0)
+    parser.add_argument("--reboot-if-changed", action="store_true")
     args = parser.parse_args()
     if not 0 <= args.index <= 9999:
         parser.error("--index must be between 0 and 9999")
@@ -157,8 +175,11 @@ def main() -> int:
             f"{state}: PX4 reached through {source}; domain={args.domain}, "
             f"namespace={desired_namespace}"
         )
-        if changed:
-            print("Power-cycle the flight controller before namespace verification.")
+        if changed and args.reboot_if_changed:
+            print("Rebooting PX4 over DDS.")
+            client.reboot()
+        elif changed:
+            print("Reboot PX4 before namespace verification.")
         return 0
     finally:
         if client is not None:

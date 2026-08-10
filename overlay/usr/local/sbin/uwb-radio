@@ -1,0 +1,19 @@
+#!/bin/bash
+set -euo pipefail
+
+readonly CONFIG=/etc/maav/fleet-network.conf
+index="$(sed -n 's/^FLEET_INDEX=//p' "$CONFIG")"
+[[ "$index" =~ ^[0-3]$ ]]
+
+peers=()
+for peer in 0 1 2 3; do
+    [[ "$peer" == "$index" ]] || peers+=(--peer "$peer")
+done
+peers+=(--peer 0x8000 --peer 0x8001)
+
+exec /usr/local/bin/dw1000-radio range \
+    --address "$index" \
+    "${peers[@]}" \
+    --host-socket /run/uwb/host.sock \
+    --rt-priority 80 \
+    --quiet

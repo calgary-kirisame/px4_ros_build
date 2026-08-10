@@ -1,12 +1,12 @@
 [Unit]
-Description=MAAV fleet operator-device DHCP
-After=maav-fleet-network.service
-PartOf=maav-fleet-network.service
+Description=Fleet operator-device DHCP
+After=fleet-network.service
+PartOf=fleet-network.service
 ConditionPathExists=/etc/maav/dnsmasq-fleet.conf
 
 [Service]
 Type=simple
-ExecCondition=/usr/local/sbin/maav-fleet-network is-master
+ExecCondition=/usr/local/sbin/fleet-network is-field-master
 ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=/etc/maav/dnsmasq-fleet.conf
 Restart=on-failure
 RestartSec=2
