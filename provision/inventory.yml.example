@@ -62,11 +62,11 @@ all:
           fleet_index: 1
           vehicle_namespace: px4_1
           fleet_ip: 10.77.0.11
-        drone2:
-          fleet_index: 2
-          vehicle_namespace: px4_2
-          fleet_ip: 10.77.0.12
         drone3:
           fleet_index: 3
           vehicle_namespace: px4_3
           fleet_ip: 10.77.0.13
+        drone4:
+          fleet_index: 4
+          vehicle_namespace: px4_4
+          fleet_ip: 10.77.0.14

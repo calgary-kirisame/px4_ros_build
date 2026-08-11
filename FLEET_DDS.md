@@ -8,11 +8,10 @@ hostapd is not reliable.
 | --- | --- | --- | --- |
 | `drone0` | `px4_0` | `10.77.0.1` |
 | `drone1` | `px4_1` | `10.77.0.11` |
-| `drone2` | `px4_2` | `10.77.0.12` |
 | `drone3` | `px4_3` | `10.77.0.13` |
+| `drone4` | `px4_4` | `10.77.0.14` |
 
 Each address belongs to its drone and does not follow the runtime UWB master.
-The spare `drone4` must assume the identity of the airframe that it replaces.
 
 ## Discovery and interface selection
 

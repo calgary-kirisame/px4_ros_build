@@ -115,9 +115,6 @@ def build-fleet-network-config [wifi: record, host: record] {
     require-single-line "wifi.umich.identity" $configured_identity
     require-single-line "wifi.umich.password" $umich_password
     require-single-line "fleet_ip" $fleet_ip
-    if $fleet_index < 0 or $fleet_index > 3 {
-        error make --unspanned {msg: "fleet_index must be from 0 to 3"}
-    }
     if ($field_password | str length) < 8 or ($field_password | str length) > 63 {
         error make --unspanned {msg: "wifi.field.password must contain 8 to 63 characters"}
     }

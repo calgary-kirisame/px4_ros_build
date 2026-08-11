@@ -22,8 +22,6 @@
       ansible.builtin.assert:
         that:
           - vehicle_namespace == 'px4_' ~ (fleet_index | string)
-          - fleet_index | int >= 0
-          - fleet_index | int <= 3
 
     - name: Install the PX4 deployment helpers
       ansible.builtin.copy:

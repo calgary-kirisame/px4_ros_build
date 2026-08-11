@@ -33,8 +33,6 @@
     - name: Check the per-drone identity and address
       ansible.builtin.assert:
         that:
-          - fleet_index | int >= 0
-          - fleet_index | int <= 3
           - fleet_ip in fleet_dds.peers
           - vehicle_namespace == 'px4_' ~ (fleet_index | string)
           - "'\\n' not in fleet_ip"

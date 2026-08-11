@@ -78,11 +78,6 @@ validate_config() {
         require_value "$key"
     done
 
-    [[ "${CONFIG[FLEET_INDEX]}" =~ ^[0-3]$ ]] || {
-        log "FLEET_INDEX must be 0..3"
-        return 1
-    }
-
     ((${#CONFIG[FIELD_SSID]} <= 32)) || {
         log "FIELD_SSID must be at most 32 characters"
         return 1
@@ -124,10 +119,6 @@ read_mode() {
             *) log "invalid key in $MODE_FILE: $key"; return 1 ;;
         esac
     done <"$MODE_FILE"
-    [[ "$MASTER" =~ ^[0-3]$ ]] || {
-        log "MASTER in $MODE_FILE must be 0..3"
-        return 1
-    }
     [[ "$NETWORK" == field || "$NETWORK" == internet ]] || {
         log "NETWORK in $MODE_FILE must be field or internet"
         return 1
@@ -409,10 +400,6 @@ set_mode() {
     local temporary
 
     validate_config
-    [[ "$master" =~ ^[0-3]$ ]] || {
-        log "master must be 0..3"
-        return 1
-    }
     [[ "$network" == field || "$network" == internet ]] || {
         log "network must be field or internet"
         return 1

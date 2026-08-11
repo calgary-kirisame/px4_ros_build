@@ -157,8 +157,8 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=4.0)
     parser.add_argument("--reboot-if-changed", action="store_true")
     args = parser.parse_args()
-    if not 0 <= args.index <= 9999:
-        parser.error("--index must be between 0 and 9999")
+    if not 0 <= args.index <= 255:
+        parser.error("--index must be between 0 and 255")
     if not 0 <= args.domain <= 232:
         parser.error("--domain must be between 0 and 232")
 
