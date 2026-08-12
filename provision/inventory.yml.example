@@ -27,18 +27,23 @@ all:
     # Reusable, tagged pre-auth key from https://login.tailscale.com/admin/settings/keys
     # Leave empty to skip Tailscale authentication at flash time.
     tailscale_authkey: ""
-    # Fleet DDS uses only wlan0 and these unicast discovery peers. Each address
-    # belongs to a drone and remains fixed when the master role moves.
+    # Reserve .10 through .19 for companion computers. Known hosts use
+    # .10 + fleet_index; unused slots remain available for replacement Pis.
     fleet_dds:
       domain_id: 0
       interface: wlan0
       subnet: 10.77.0.0/24
       peers:
-        - 10.77.0.1
+        - 10.77.0.10
         - 10.77.0.11
         - 10.77.0.12
         - 10.77.0.13
         - 10.77.0.14
+        - 10.77.0.15
+        - 10.77.0.16
+        - 10.77.0.17
+        - 10.77.0.18
+        - 10.77.0.19
   children:
     drones:
       hosts:
@@ -57,7 +62,7 @@ all:
         drone0:
           fleet_index: 0
           vehicle_namespace: px4_0
-          fleet_ip: 10.77.0.1
+          fleet_ip: 10.77.0.10
         drone1:
           fleet_index: 1
           vehicle_namespace: px4_1

@@ -16,11 +16,16 @@
       <MaxAutoParticipantIndex>15</MaxAutoParticipantIndex>
       <Peers>
         <Peer Address="127.0.0.1" />
-        <Peer Address="10.77.0.1" />
+        <Peer Address="10.77.0.10" />
         <Peer Address="10.77.0.11" />
         <Peer Address="10.77.0.12" />
         <Peer Address="10.77.0.13" />
         <Peer Address="10.77.0.14" />
+        <Peer Address="10.77.0.15" />
+        <Peer Address="10.77.0.16" />
+        <Peer Address="10.77.0.17" />
+        <Peer Address="10.77.0.18" />
+        <Peer Address="10.77.0.19" />
       </Peers>
     </Discovery>
   </Domain>

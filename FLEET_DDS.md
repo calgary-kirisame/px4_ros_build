@@ -6,12 +6,20 @@ hostapd is not reliable.
 
 | Host | PX4 namespace | Fleet address |
 | --- | --- | --- | --- |
-| `drone0` | `px4_0` | `10.77.0.1` |
+| `drone0` | `px4_0` | `10.77.0.10` |
 | `drone1` | `px4_1` | `10.77.0.11` |
 | `drone3` | `px4_3` | `10.77.0.13` |
 | `drone4` | `px4_4` | `10.77.0.14` |
 
 Each address belongs to its drone and does not follow the runtime UWB master.
+The field LAN has no default gateway: every fleet address is in the same
+`10.77.0.0/24` subnet and peers communicate directly. `10.77.0.1` is
+intentionally unassigned.
+
+Addresses `10.77.0.10` through `10.77.0.19` are reserved for companion
+computers and included in static DDS discovery. Known hosts use `.10 +
+fleet_index`; `.12` and `.15` through `.19` are currently vacant replacement
+slots. Operator-device DHCP starts at `.100`.
 
 ## Discovery and interface selection
 
