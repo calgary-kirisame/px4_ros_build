@@ -1,0 +1,43 @@
+#!/bin/bash
+set -euo pipefail
+
+readonly DWM_DEVICE="${DWM_DEVICE:-/dev/serial/by-id/usb-MAAV_Mission_10_DWM3001_bring-up_DWM3001-01-if00}"
+readonly HOST_TOOL="${MISSION10_UWB_HOST_TOOL:-/home/maav/mission10/uwb/protocol/python/mission10_uwb_protocol.py}"
+
+usage() {
+    echo "usage: fleetmode MASTER field|internet" >&2
+}
+
+if (($# != 2)); then
+    usage
+    exit 2
+fi
+
+readonly master="$1"
+readonly network="$2"
+
+if [[ ! "$master" =~ ^[0-9]+$ ]] || ((10#$master > 255)); then
+    echo "fleetmode: MASTER must be 0..255" >&2
+    exit 2
+fi
+if [[ "$network" != field && "$network" != internet ]]; then
+    echo "fleetmode: network must be field or internet" >&2
+    exit 2
+fi
+if [[ ! -e "$DWM_DEVICE" ]]; then
+    echo "fleetmode: DWM3001 is not connected at $DWM_DEVICE" >&2
+    exit 1
+fi
+if [[ ! -r "$HOST_TOOL" ]]; then
+    echo "fleetmode: host tool is not readable at $HOST_TOOL" >&2
+    exit 1
+fi
+
+# DWM configuration is volatile. Configure the development transmitter on
+# every invocation, then queue the FleetMode broadcast. The firmware repeats
+# the broadcast eight times at 125 ms intervals after this command returns.
+exec python3 "$HOST_TOOL" "$DWM_DEVICE" \
+    --configure-node 0x8000 \
+    --peer 0 --peer 1 --peer 3 --peer 4 --peer 0x8001 \
+    --fleet-master "$master" \
+    --network "$network"

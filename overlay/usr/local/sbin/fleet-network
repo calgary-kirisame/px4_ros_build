@@ -78,6 +78,12 @@ validate_config() {
         require_value "$key"
     done
 
+    [[ "${CONFIG[FLEET_INDEX]}" =~ ^[0-9]{1,3}$ ]] && \
+        ((10#${CONFIG[FLEET_INDEX]} <= 255)) || {
+        log "FLEET_INDEX must be 0..255"
+        return 1
+    }
+
     ((${#CONFIG[FIELD_SSID]} <= 32)) || {
         log "FIELD_SSID must be at most 32 characters"
         return 1
@@ -119,6 +125,10 @@ read_mode() {
             *) log "invalid key in $MODE_FILE: $key"; return 1 ;;
         esac
     done <"$MODE_FILE"
+    [[ "$MASTER" =~ ^[0-9]{1,3}$ ]] && ((10#$MASTER <= 255)) || {
+        log "MASTER in $MODE_FILE must be 0..255"
+        return 1
+    }
     [[ "$NETWORK" == field || "$NETWORK" == internet ]] || {
         log "NETWORK in $MODE_FILE must be field or internet"
         return 1
@@ -175,6 +185,25 @@ set_onboard_priorities() {
                     connection.autoconnect yes \
                     connection.autoconnect-priority 200 \
                     connection.autoconnect-retries 0
+                ;;
+            "${CONFIG[FIELD_SSID]}")
+                # Only configure_field_ap/client may enable a field profile.
+                # This also neutralizes accidental generic DHCP profiles for
+                # the field SSID.
+                nmcli connection modify "$uuid" connection.autoconnect no
+                ;;
+            *)
+                if [[ "$(nmcli -g connection.type connection show "$uuid" 2>/dev/null || true)" == \
+                    "802-11-wireless" && \
+                    "$(nmcli -g 802-11-wireless.mode connection show "$uuid" 2>/dev/null || true)" == \
+                    "infrastructure" ]]; then
+                    # Operator-saved venue Wi-Fi is a valid, lower-priority
+                    # development fallback. Field profiles remain at 400.
+                    nmcli connection modify "$uuid" \
+                        connection.autoconnect yes \
+                        connection.autoconnect-priority 100 \
+                        connection.autoconnect-retries 0
+                fi
                 ;;
         esac
     done < <(nmcli -g UUID connection show)
@@ -338,19 +367,43 @@ set_dds_configuration() {
 connect_development() {
     local ssid
     local uuid
+    local visible_ssids
+    local -A attempted=()
 
     disable_profile "$AP_PROFILE"
     disable_profile "$CLIENT_PROFILE"
+    visible_ssids="$(nmcli -g SSID device wifi list ifname "$ONBOARD_INTERFACE" 2>/dev/null || true)"
     for ssid in MWireless "${CONFIG[HOTSPOT_SSID]}"; do
+        grep -Fxq -- "$ssid" <<<"$visible_ssids" || continue
         while IFS= read -r uuid; do
             [[ -n "$uuid" ]] || continue
             [[ "$(nmcli -g 802-11-wireless.ssid connection show "$uuid")" == "$ssid" ]] || continue
             [[ "$(nmcli -g connection.interface-name connection show "$uuid")" == "$ONBOARD_INTERFACE" ]] || continue
+            attempted["$uuid"]=1
             if nmcli --wait 15 connection up "$uuid" ifname "$ONBOARD_INTERFACE"; then
                 return
             fi
         done < <(nmcli -g UUID connection show)
     done
+
+    # Venue networks are intentionally operator-managed. Accept any saved
+    # infrastructure profile bound to wlan0, but never mistake the field SSID
+    # or a USB profile for an internet connection.
+    while IFS= read -r uuid; do
+        [[ -n "$uuid" && ! -v "attempted[$uuid]" ]] || continue
+        [[ "$(nmcli -g connection.type connection show "$uuid" 2>/dev/null || true)" == \
+            "802-11-wireless" ]] || continue
+        [[ "$(nmcli -g connection.interface-name connection show "$uuid" 2>/dev/null || true)" == \
+            "$ONBOARD_INTERFACE" ]] || continue
+        [[ "$(nmcli -g 802-11-wireless.mode connection show "$uuid" 2>/dev/null || true)" == \
+            "infrastructure" ]] || continue
+        ssid="$(nmcli -g 802-11-wireless.ssid connection show "$uuid" 2>/dev/null || true)"
+        [[ -n "$ssid" && "$ssid" != "${CONFIG[FIELD_SSID]}" ]] || continue
+        grep -Fxq -- "$ssid" <<<"$visible_ssids" || continue
+        if nmcli --wait 15 connection up "$uuid" ifname "$ONBOARD_INTERFACE"; then
+            return
+        fi
+    done < <(nmcli -g UUID connection show)
     log "no development Wi-Fi profile connected on $ONBOARD_INTERFACE"
     return 1
 }
@@ -400,6 +453,10 @@ set_mode() {
     local temporary
 
     validate_config
+    [[ "$master" =~ ^[0-9]{1,3}$ ]] && ((10#$master <= 255)) || {
+        log "master must be 0..255"
+        return 1
+    }
     [[ "$network" == field || "$network" == internet ]] || {
         log "network must be field or internet"
         return 1

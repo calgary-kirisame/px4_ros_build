@@ -94,6 +94,17 @@
         mode: "0755"
       notify: Restart fleet network
 
+    - name: Install the fleet operator commands
+      ansible.builtin.copy:
+        src: "../../overlay/usr/local/bin/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - fleet
+        - fleetmode
+
     - name: Install the fleet network units
       ansible.builtin.copy:
         src: "../../overlay/etc/systemd/system/{{ item }}"

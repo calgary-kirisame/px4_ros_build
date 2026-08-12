@@ -15,6 +15,7 @@ Pipeline producing Pi OS image for the CM5 with ROS 2 Jazzy and PX4 companion so
 - Picamera2, NumPy, and OpenCV, which the pure-Python flight packages run on
 - User: `maav`, with direct camera, serial, GPIO, and SPI device access
 - Per-drone `PX4_NAMESPACE` in SSH/login environments and system services
+- `fleet status` reports the selected role, radios, and UWB/network services
 
 Follow `How 2 flash` if you haven't flashed yet. Otherwise if the drone is accessible over SSH, make changes on the running system instead, because flashing takes long time
 
@@ -58,6 +59,20 @@ Each push to `main` resolves the Mission 10 and PX4 refs in
 `.github/release-inputs.env` once. The image, firmware, generated messages, and
 UWB programs are built from those immutable SHAs and recorded in
 `/etc/maav/image-release.json`.
+
+## Fleet network command
+
+Run `fleet status` before changing the network. A two-argument command sends
+the complete selection over UWB and applies it to the transmitting drone too:
+
+```bash
+fleet status
+fleet 0 field
+fleet 0 internet
+```
+
+For bench work or recovery, `fleet local 0 field` changes only the current
+drone. `fleetmode MASTER field|internet` remains the raw standalone-DWM sender.
 
 ## Other stuff
 

@@ -181,6 +181,9 @@ EOF
 systemd-nspawn --pipe -D "$MNT" bash -c '
   set -euo pipefail
   test -x /usr/local/bin/dw1000-radio
+  test -x /usr/local/bin/fleet
+  test -x /usr/local/bin/fleetmode
+  test -x /usr/local/sbin/fleet-network
   test -r /home/maav/mission10/install/setup.bash
   test "$(stat -c %u:%g /home/maav)" = 1000:1000
   test -r /opt/maav/firmware/px4_fmu-v5_default.px4

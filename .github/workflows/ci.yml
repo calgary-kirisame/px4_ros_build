@@ -13,6 +13,20 @@ env:
   VISION_MSGS_REF: adbf56af9f77e3c8ab2552e25dc99e4a8a77fb27
 
 jobs:
+  fleet-tools:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Test fleet operator tools
+        run: |
+          bash -n \
+            overlay/usr/local/bin/fleet \
+            overlay/usr/local/bin/fleetmode \
+            overlay/usr/local/sbin/fleet-network \
+            tests/test-fleet-cli.sh
+          tests/test-fleet-cli.sh
+
   resolve-inputs:
     runs-on: ubuntu-24.04
     outputs:

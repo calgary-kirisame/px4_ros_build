@@ -57,6 +57,7 @@
 
         network = run(["/usr/local/sbin/fleet-network", "check"], timeout=5)
         network_text = network.stdout.strip()
+        fleet_status = run(["/usr/local/bin/fleet", "status"], timeout=5)
         network_match = re.search(r"\bnetwork=(field|internet)\b", network_text)
         network_mode = network_match.group(1) if network_match else "unknown"
         dds_link = os.readlink("/etc/cyclonedds/active.xml")
@@ -107,6 +108,10 @@
             "dds_selection": dds_link == f"{network_mode}.xml",
             "fleet_network": service("fleet-network.service", "is-active")
                 and service("fleet-network.service", "is-enabled"),
+            "fleet_cli": fleet_status.returncode == 0
+                and f"fleet: index={{ fleet_index }}" in fleet_status.stdout
+                and "wlan0:" in fleet_status.stdout
+                and "uwb-gateway.service:" in fleet_status.stdout,
             "xrce_agent": service("xrce-dds-agent.service", "is-active")
                 and service("xrce-dds-agent.service", "is-enabled"),
             "uwb_radio": service("uwb-radio.service", "is-active")
