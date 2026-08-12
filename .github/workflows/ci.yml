@@ -24,8 +24,10 @@ jobs:
             overlay/usr/local/bin/fleet \
             overlay/usr/local/bin/fleetmode \
             overlay/usr/local/sbin/fleet-network \
-            tests/test-fleet-cli.sh
+            tests/test-fleet-cli.sh \
+            tests/test-fleet-provisioning.sh
           tests/test-fleet-cli.sh
+          tests/test-fleet-provisioning.sh
 
   resolve-inputs:
     runs-on: ubuntu-24.04

@@ -232,7 +232,10 @@ def main [hostname: string, image: path, --disable-verify] {
     let fleet_runcmd = if $fleet_host == null {
         ""
     } else {
-        "  - [systemctl, daemon-reload]\n  - [systemctl, restart, fleet-network.service]\n"
+        # Raspberry Pi Imager/cloud-init has produced root:root here despite
+        # write_files.owner. Enforce the runtime contract after users/groups
+        # exist and before any maav-owned fleet service starts.
+        "  - [chown, root:maav, /etc/maav/fleet-network.conf]\n  - [chmod, \"0640\", /etc/maav/fleet-network.conf]\n  - [systemctl, daemon-reload]\n  - [systemctl, restart, fleet-network.service]\n"
     }
 
     # Enterprise WiFi validates the RADIUS certificate before NTP is available.
