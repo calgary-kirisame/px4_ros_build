@@ -203,7 +203,9 @@ def main [hostname: string, image: path, --disable-verify] {
             path: "/etc/maav/fleet-network.conf"
             content: (build-fleet-network-config $inv.wifi $fleet_host)
             permissions: "0640"
-            owner: "root:maav"
+            # write_files runs before the image's pi account is renamed maav.
+            # Keep the early-stage owner resolvable; runcmd assigns group maav.
+            owner: "root:root"
         } {
             path: "/etc/environment"
             content: $"PX4_NAMESPACE=/($vehicle_namespace)\n"

@@ -6,10 +6,22 @@ readonly FLASH="$REPO_ROOT/provision/flash.nu"
 readonly PLAYBOOK="$REPO_ROOT/provision/playbooks/fleet-network.yml"
 readonly TMPFILES="$REPO_ROOT/overlay/usr/lib/tmpfiles.d/maav-fleet.conf"
 
-grep -Fq 'owner: "root:maav"' "$FLASH"
+fleet_write_block="$(sed -n \
+    '/path: "\/etc\/maav\/fleet-network.conf"/,/^        } {/p' "$FLASH")"
+grep -Fq 'owner: "root:root"' <<<"$fleet_write_block"
 grep -Fq 'permissions: "0640"' "$FLASH"
 grep -Fq '[chown, root:maav, /etc/maav/fleet-network.conf]' "$FLASH"
 grep -Fq '[chmod, \"0640\", /etc/maav/fleet-network.conf]' "$FLASH"
+
+awk '
+    /\[chown, root:maav, \/etc\/maav\/fleet-network.conf\]/ {
+        if (index($0, "[chown, root:maav") >= index($0, "[systemctl, restart")) {
+            exit 1
+        }
+        found = 1
+    }
+    END { exit !found }
+' "$FLASH"
 
 grep -A8 -F 'dest: /etc/maav/fleet-network.conf' "$PLAYBOOK" \
     | grep -Fq 'group: maav'
